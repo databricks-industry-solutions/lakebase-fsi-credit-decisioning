@@ -25,7 +25,9 @@ JOB_NAME = "lakebase-credit-pipeline"
 
 w = WorkspaceClient(profile=PROFILE) if PROFILE else WorkspaceClient()
 
-endpoint_path = w.secrets.get_secret("lakebase-demo", "endpoint_path").value
+import base64
+_secret = w.secrets.get_secret("lakebase-demo", "endpoint_path")
+endpoint_path = base64.b64decode(_secret.value).decode() if _secret.value else ""
 if not endpoint_path:
     sys.exit("Secret 'lakebase-demo/endpoint_path' is empty. Set it first.")
 
