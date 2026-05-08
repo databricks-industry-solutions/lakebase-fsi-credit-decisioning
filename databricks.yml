@@ -1,0 +1,27 @@
+bundle:
+  name: lakebase-fsi-credit-decisioning
+
+variables:
+  catalog:
+    description: "Unity Catalog name where the solution will be deployed"
+    default: ""
+
+  schema:
+    description: "UC Schema name (will be created if missing)"
+    default: "lakebase_credit_demo"
+
+  lakebase_host:
+    description: "Lakebase endpoint host (ep-xxxxx.database.<region>.cloud.databricks.com)"
+    default: ""
+
+  lakebase_user:
+    description: "Lakebase user (Databricks email or SP client_id)"
+    default: ""
+
+targets:
+  dev:
+    default: true
+    mode: development
+
+  prod:
+    mode: production

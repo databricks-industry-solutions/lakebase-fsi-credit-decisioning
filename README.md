@@ -100,7 +100,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/databricks-industry-solutions/lakebase-fsi-credit-decisioning.git
+git clone https://github.com/fabricio-hamada_data/lakebase-fsi-credit-decisioning.git
 cd lakebase-fsi-credit-decisioning
 ```
 

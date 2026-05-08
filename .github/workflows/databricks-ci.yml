@@ -1,0 +1,38 @@
+name: Databricks CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: databricks bundle validate
+        continue-on-error: true
+
+      - name: Check for secrets in code
+        run: |
+          if grep -rn "eyJ\|dapi[0-9a-f]\|xoxb-\|sk-" \
+            --include="*.py" --include="*.yaml" --include="*.md" \
+            --exclude-dir=".git" .; then
+            echo "ERROR: Possible token/secret found in code"
+            exit 1
+          fi
+          echo "Secret scan: clean"

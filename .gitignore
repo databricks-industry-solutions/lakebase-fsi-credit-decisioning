@@ -31,3 +31,4 @@ app.yaml.local
 mlruns/
 demo_screenshots.yaml
 *.drawio
+.env
