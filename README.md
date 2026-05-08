@@ -2,7 +2,7 @@
 
 **Databricks Solution Accelerator — FSI / Credit Risk**
 
-Train, serve, and audit credit decisions on a single platform. No Redis. No Cassandra. No SAS. No separate feature store infrastructure.
+Train on Delta, serve real-time features from Lakebase, and audit every decision through Unity Catalog — without separate feature store infrastructure.
 
 ## Business Overview
 
@@ -32,8 +32,8 @@ Regulatory audits (BACEN, OCC, Basel IV) require correlating three separate logs
 ```
 Raw Data → Delta (Bronze/Silver) → Lakebase (serving) → MLflow Model → APPROVE/DECLINE → Decision Log
                                          ↑                   ↑                ↓
-                               p50=4ms  p95=14ms          champion       UC Lineage
-                               @ 100 concurrent req/s      (MLflow)     (full audit trail)
+                                    sub-15ms p95          champion       UC Lineage
+                                   (serverless)            (MLflow)     (full audit trail)
 ```
 
 One catalog, one lineage graph, one team to operate.
@@ -61,7 +61,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 
 ### Landing Page
 ![Landing page](docs/screenshots/app_landing.png)
-*Persona selector with benchmark stats — p50=4ms, p95=14ms, p99=22ms at 100 concurrent requests on Databricks Serverless.*
+*Persona selector with live benchmark stats — feature lookup latency measured at 100 concurrent requests on Databricks Serverless. See benchmark results in `notebooks/04_realtime_serving.py`.*
 
 ### Technical Analyst — APPROVE
 ![APPROVE decision](docs/screenshots/app_technical_approve.png)
