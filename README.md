@@ -267,7 +267,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-clie
 | 00 | `00_setup_verify` | Verify Lakebase connection + create UC schema | 1 min |
 | 01 | `01_data_generation` | Generate 100K synthetic credit features → Delta + Lakebase | ~5 min |
 | 02 | `02_model_training` | Train LightGBM credit scoring model → MLflow UC registry | ~3 min |
-| 03 | `03_feature_store` | Feature engineering in Spark → sync enriched features to Lakebase | ~2 min |
+| 03 | `03_feature_store` | Feature engineering in Spark → sync enriched features to Lakebase → creates `feature_store_live` Delta table in UC | ~2 min |
 | 04 | `04_realtime_serving` | Benchmark p50/p95/p99 at multiple concurrency levels | ~10 min |
 | 05 | `05_decision_log` | Simulate 10K decisions → Delta + Lakebase audit table | ~3 min |
 
@@ -299,6 +299,12 @@ Three Lakebase tables, one PostgreSQL endpoint:
 | `credit_features` | `customer_id` | Feature vector (10 fields) — updated by feature pipeline |
 | `credit_limits` | `customer_id` | Derived credit limit + tier — updated nightly |
 | `decision_log` | `(customer_id, decision_ts)` | Full audit trail — every decision with reason codes |
+
+Notebook 03 also creates a Unity Catalog Delta table, `feature_store_live`, by reading from Lakebase via Spark JDBC. This gives risk analysts governed SQL access to the live feature set with full UC lineage — without a separate connection to the PostgreSQL endpoint:
+
+```sql
+SELECT * FROM <catalog>.lakebase_credit_demo.feature_store_live LIMIT 10
+```
 
 ## Databricks App
 
