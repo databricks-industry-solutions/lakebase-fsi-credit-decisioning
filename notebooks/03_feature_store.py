@@ -4,12 +4,12 @@
 # MAGIC
 # MAGIC ## The Lakebase Angle
 # MAGIC
-# MAGIC **The old world (SAS / Redis / Feast):**
+# MAGIC **The traditional multi-system stack:**
 # MAGIC ```
 # MAGIC  Delta (training) ──┐
-# MAGIC                     ├─→ ETL job ──→ Redis/Cassandra (serving) ──→ Model server ──→ Decision
-# MAGIC  Oracle/DB2 ────────┘
-# MAGIC  (SAS model store)
+# MAGIC                     ├─→ ETL job ──→ External feature store (serving) ──→ Model server ──→ Decision
+# MAGIC  Source databases ──┘
+# MAGIC  (separate model store)
 # MAGIC ```
 # MAGIC Three systems to operate. Three observability stacks. Zero shared lineage.
 # MAGIC
@@ -82,7 +82,7 @@ def get_conn():
 # MAGIC We transform bronze features into the final serving schema.
 # MAGIC The silver table is the source of truth for both batch analytics and the Lakebase sync.
 # MAGIC
-# MAGIC **This is the handoff point the SAS world never had:**
+# MAGIC **The key handoff point:**
 # MAGIC the feature engineering runs in Spark, the output lands in Delta with UC governance,
 # MAGIC and the same table feeds both the model training pipeline and the real-time serving layer.
 
@@ -133,7 +133,7 @@ print(f"Columns: {len(silver.columns)}")
 # MAGIC %md
 # MAGIC ## 2. Sync silver → Lakebase (real-time serving layer)
 # MAGIC
-# MAGIC This step replaces what Redis/Cassandra does in a traditional feature store.
+# MAGIC This step replaces what a traditional external feature store does.
 # MAGIC The Lakebase table receives the enriched features and becomes the live serving endpoint.
 # MAGIC
 # MAGIC **Why not just query Delta at inference time?**
@@ -200,7 +200,7 @@ print(f"\nLakebase sync: {updated:,} rows in {time.perf_counter() - t0:.1f}s")
 # MAGIC feature store to any Databricks workload — batch jobs, notebooks, dashboards —
 # MAGIC under the same catalog governance as Delta tables.
 # MAGIC
-# MAGIC **This is the SAS replacement argument in one query:**
+# MAGIC **Single-platform governance in one query:**
 # MAGIC a risk analyst can run `SELECT * FROM main.lakebase_credit_demo.feature_store_live`
 # MAGIC and get features that were updated 5 minutes ago, with full UC permissions.
 

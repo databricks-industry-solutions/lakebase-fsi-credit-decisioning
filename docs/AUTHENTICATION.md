@@ -65,7 +65,7 @@ For workspace admins onboarding a new team member:
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<user-email>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
-GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<user-email>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<user-email>`;
 ```
 
 **Lakebase postgres role (run via psycopg2 or notebook 00):**
@@ -96,7 +96,7 @@ When deploying the App for the first time, the App's service principal needs:
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id-uuid>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
-GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id-uuid>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id-uuid>`;
 ```
 
 **2. Lakebase postgres role** for the SP:
@@ -266,19 +266,22 @@ Apps runtime.
 
 ---
 
-## Pattern 4: Service Principal M2M OAuth (production jobs)
+## Pattern 4: Service Principal M2M OAuth (optional fallback)
 
-For long-running or scheduled pipelines, use a Service Principal with stored credentials:
+This pattern is a fallback for environments where Step 0 (SDK) cannot resolve workspace
+credentials automatically — for example, specific NCC configurations or private-endpoint
+setups. Most deployments do not need it.
+
+**When you need it:** if `_get_lakebase_credential` logs `SDK generate_database_credential
+skipped` and no other step succeeds.
 
 **Setup (one-time):**
 ```bash
-# Store SP credentials in secret scope
 databricks secrets put-secret lakebase-demo sp_client_id --string-value "<sp-uuid>"
 databricks secrets put-secret lakebase-demo sp_client_secret --string-value "<sp-secret>"
 ```
 
-The `util_lakebase_auth` notebook will automatically use these (Step 3 in the auth chain)
-if `lakebase_pass` is not provided and Steps 0-2 fail.
+The `util_lakebase_auth` notebook uses these automatically as Step 3 if Steps 0–2 fail.
 
 **Requirements:**
 1. Create a Service Principal in Account Console
@@ -295,11 +298,15 @@ The notebooks and the App use a Databricks secret scope named `lakebase-demo`.
 
 | Key | Purpose | Required |
 |---|---|---|
-| `endpoint_path` | Lakebase endpoint for `generate_database_credential` | Yes |
-| `sp_client_id` | SP UUID for M2M OAuth (jobs, App fallback) | Only for SP auth |
-| `sp_client_secret` | SP secret for M2M OAuth | Only for SP auth |
+| `endpoint_path` | Lakebase endpoint for `generate_database_credential` | **Yes** |
+| `sp_client_id` | SP UUID for M2M OAuth — Step 3 fallback only | No |
+| `sp_client_secret` | SP secret for M2M OAuth — Step 3 fallback only | No |
 
-**Create the scope:**
+`sp_client_id` and `sp_client_secret` are used only if Steps 0–2 in `util_lakebase_auth` all
+fail (rare: specific NCC or private-endpoint configurations). Interactive notebooks, serverless
+jobs, and the Databricks App all work with `endpoint_path` alone.
+
+**Create the scope (minimum required):**
 ```bash
 databricks secrets create-scope lakebase-demo --profile <your-profile>
 databricks secrets put-secret lakebase-demo endpoint_path \

@@ -6,7 +6,7 @@ Train on Delta, serve real-time features from Lakebase, and audit every decision
 
 ## Business Overview
 
-Financial institutions running credit decisioning on SAS or multi-system stacks (training environment + Redis/Cassandra feature store + model server) face fragmented lineage, three separate on-call teams, and weeks of work to answer a single regulatory audit question. This accelerator demonstrates how Databricks Lakebase collapses all three into one platform: train on Delta, serve features from Lakebase in real-time (&lt;15ms p95), log every decision to Delta, and trace the full audit trail through Unity Catalog lineage — without a single external system.
+Financial institutions running credit decisioning on fragmented multi-system stacks (separate training environment + external feature store + model serving layer) face broken lineage, multiple on-call teams, and weeks of work to answer a single regulatory audit question. This accelerator demonstrates how Databricks Lakebase collapses all three into one platform: train on Delta, serve features from Lakebase in real-time, log every decision to Delta, and trace the full audit trail through Unity Catalog lineage — without a single external system.
 
 [![Databricks](https://img.shields.io/badge/Databricks-Lakebase-FF3621)](https://docs.databricks.com/oltp/)
 [![DBR](https://img.shields.io/badge/DBR-15.4_ML_LTS-blue)](https://docs.databricks.com/release-notes/runtime/15.4ml.html)
@@ -18,8 +18,8 @@ Credit decisioning today requires **three separate systems**:
 
 | System | Responsibility | Pain |
 |---|---|---|
-| Databricks / SAS | Model training | Separate from serving |
-| Redis / Cassandra / Feast | Feature store (real-time serving) | Extra infra, no lineage — eliminated by Lakebase |
+| Model training platform | Model training | Separate from serving |
+| External feature store | Feature store (real-time serving) | Extra infra, no lineage — eliminated by Lakebase |
 | Model serving layer | Inference | Another hop, latency budget |
 
 Every decision crosses system boundaries. Lineage is reconstructed, not native.
@@ -128,30 +128,25 @@ databricks auth login \
 
 ### 4. Create the Databricks secret scope
 
-The notebooks use Databricks Secrets to store the Lakebase endpoint path and
-Service Principal credentials. Run the following CLI commands:
+The notebooks and the App use a Databricks secret scope named `lakebase-demo`.
+Only `endpoint_path` is required — the SDK uses it to exchange credentials automatically
+in all runtimes (interactive notebook, serverless job, Databricks App).
 
 ```bash
 # Create the scope
 databricks secrets create-scope lakebase-demo --profile lakebase-demo
 
-# Store the Lakebase endpoint path
+# Store the Lakebase endpoint path — this is the only required secret
 # Format: projects/<project>/branches/<branch>/endpoints/primary
-# Get it from: Catalog Explorer → Lakebase → your instance
+# Get it from: Catalog Explorer → Lakebase → your instance → copy Endpoint path
 databricks secrets put-secret lakebase-demo endpoint_path \
   --string-value "<your-lakebase-endpoint-path>" \
   --profile lakebase-demo
-
-# (Optional) Service Principal for automated jobs
-databricks secrets put-secret lakebase-demo sp_client_id \
-  --string-value "<sp-client-id>" --profile lakebase-demo
-databricks secrets put-secret lakebase-demo sp_client_secret \
-  --string-value "<sp-client-secret>" --profile lakebase-demo
 ```
 
-> **Note:** For interactive runs (browser), the endpoint_path secret is enough.
-> For jobs and the Databricks App, a Service Principal is recommended.
-> See `docs/AUTHENTICATION.md` for the full SP setup guide.
+> **Note:** `sp_client_id` and `sp_client_secret` are optional — needed only as a fallback
+> for NCC/private-endpoint environments where SDK credential resolution fails.
+> See `docs/AUTHENTICATION.md` for details.
 
 ### 5. Upload notebooks to your workspace
 
@@ -243,7 +238,7 @@ Then run in a notebook (or via the SQL Statement Execution API):
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
-GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
 ```
 
 And via psycopg2 (connect to Lakebase with admin credential):
@@ -319,8 +314,8 @@ Demo scenarios are pre-loaded in the sidebar for quick demos.
 
 See `docs/AUTHENTICATION.md` for:
 - Interactive session (browser) — auto-token, no setup needed
-- Service Principal M2M OAuth — recommended for automated jobs and the App
-- Databricks Apps `X-Forwarded-Access-Token` — how multi-user auth works in the App
+- Databricks Apps — built-in SP identity + user bearer token, no manual secrets required
+- Service Principal M2M OAuth — optional fallback for NCC/private-endpoint environments
 
 ## Troubleshooting
 

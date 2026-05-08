@@ -227,4 +227,4 @@ for i, (score, decision) in enumerate(zip(scores, decisions)):
 # MAGIC | Test AUC | logged in MLflow |
 # MAGIC
 # MAGIC **Next:** Run `03_feature_store.py` to set up the Lakebase feature store
-# MAGIC with the SAS replacement narrative.
+# MAGIC and sync features to the real-time serving layer.

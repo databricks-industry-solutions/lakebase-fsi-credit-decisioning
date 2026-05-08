@@ -6,8 +6,8 @@
 # MAGIC `customer_id → features (Lakebase) → score (MLflow model) → APPROVE/DECLINE`
 # MAGIC
 # MAGIC **Decision gate:**
-# MAGIC - p99 < 50ms at 100 concurrent → Architecture A: Lakebase-only (no Redis)
-# MAGIC - p99 ≥ 50ms → Architecture C: Lakebase + Redis hybrid
+# MAGIC - p99 < 50ms at 100 concurrent → Architecture A: Lakebase-only (SLA met)
+# MAGIC - p99 ≥ 50ms → Architecture B: Lakebase + caching layer hybrid
 # MAGIC
 # MAGIC Previous spike result: p50=4ms, p95=14ms (feature-only lookup, us-west-2).
 # MAGIC This notebook adds the full decision loop: feature + model inference + reason codes.
@@ -255,9 +255,9 @@ if verdict == "PASS":
     print("  No separate feature store infrastructure required.")
 else:
     print()
-    print("  Architecture: C — Lakebase + Redis hybrid serving layer")
+    print("  Architecture: B — Lakebase + caching layer hybrid")
     print(f"  p99 {worst_p99:.0f}ms exceeds {TARGET_P99}ms target.")
-    print("  Recommendation: add Redis as L1 cache for hot features (top 10% customer_ids).")
+    print("  Recommendation: add an in-memory cache for hot features (top 10% customer_ids).")
 
 # COMMAND ----------
 # MAGIC %md ## 6. Latency breakdown (feature vs inference)

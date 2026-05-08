@@ -8,7 +8,7 @@
 # MAGIC
 # MAGIC **The regulatory angle** (BACEN / OCC / Basel IV):
 # MAGIC regulators require that you can answer "why was this customer declined?"
-# MAGIC In the SAS world that means reconstructing a decision from a model log,
+# MAGIC In a traditional multi-system stack that means reconstructing a decision from a model log,
 # MAGIC a feature extract, and a separate data warehouse — three systems, weeks of work.
 # MAGIC
 # MAGIC Here, the full chain lives in one catalog:

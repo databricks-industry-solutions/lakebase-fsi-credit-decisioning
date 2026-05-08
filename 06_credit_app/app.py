@@ -301,7 +301,7 @@ def _load_model_if_needed() -> None:
 
 _feature_importances: dict[str, float] = {}
 
-# Try eager load at startup (works if SP has EXECUTE ON MODEL)
+# Try eager load at startup (works if SP has EXECUTE ON FUNCTION for the model)
 try:
     mlflow.set_registry_uri("databricks-uc")
     _model = mlflow.lightgbm.load_model(f"models:/{CATALOG}.{SCHEMA}.{MODEL_NM}@champion")
@@ -1160,10 +1160,10 @@ _TECH_SIDEBAR = dbc.Col(width=3, children=[
         html.Div("Quick Select", style={"fontSize": "11px", "color": _MUTED,
                                          "marginBottom": "8px", **_UPPER}),
         html.Div([
-            dbc.Button(str(cid), id={"type": "quick-btn", "index": i},
+            dbc.Button(str(cid), id={"type": "quick-btn", "index": cid},
                        size="sm", outline=True, color="secondary",
                        style={"borderRadius": "6px", "fontSize": "12px", "margin": "2px"})
-            for i, cid in enumerate(sorted(random.sample(range(N_ROWS), 6)))
+            for cid in sorted(random.sample(range(N_ROWS), 6))
         ], style={"marginBottom": "14px"}),
 
         dbc.Button("↻  Random customer", id="random-btn",
@@ -1356,6 +1356,7 @@ def set_customer_id(rnd, quick):
             if idx == -1: return DEMO_SCENARIOS["approve"]
             if idx == -2: return DEMO_SCENARIOS["decline"]
             if idx == -3: return DEMO_SCENARIOS["kyc_fail"]
+            return idx
         except Exception:
             pass
     return random.randint(0, N_ROWS - 1)

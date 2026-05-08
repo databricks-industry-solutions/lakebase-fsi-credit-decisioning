@@ -39,26 +39,11 @@ env:
   - name: LAKEBASE_ENDPOINT_PATH
     value: "<your-lakebase-endpoint-path>"
 
-# ── Secrets ────────────────────────────────────────────────────────────────────
-# Create a secret scope named 'lakebase-demo' with the keys below.
-# CLI:
-#   databricks secrets create-scope lakebase-demo
-#   databricks secrets put-secret lakebase-demo sp_client_id --string-value <SP_CLIENT_ID>
-#   databricks secrets put-secret lakebase-demo sp_client_secret --string-value <SP_SECRET>
+# ── Auth note ──────────────────────────────────────────────────────────────────
+# The App authenticates to Lakebase using two built-in mechanisms — no Secrets block needed:
 #
-# The App uses these for SP M2M auth fallback. If running interactively
-# (browser session), the X-Forwarded-Access-Token header is used instead
-# and no secrets are required.
-resources:
-  - name: lakebase-sp-cid
-    description: "Service Principal client ID for Lakebase M2M auth"
-    secret:
-      scope: lakebase-demo
-      key: sp_client_id
-      env_variable: LAKEBASE_SP_CLIENT_ID
-  - name: lakebase-sp-csec
-    description: "Service Principal client secret for Lakebase M2M auth"
-    secret:
-      scope: lakebase-demo
-      key: sp_client_secret
-      env_variable: LAKEBASE_SP_CLIENT_SECRET
+#   1. Browser sessions: X-Forwarded-Access-Token (user's own OAuth token, injected by runtime)
+#   2. Startup / background: SDK generate_database_credential using the App's built-in SP
+#
+# LAKEBASE_ENDPOINT_PATH above is the only Lakebase-specific value needed.
+# The Databricks runtime injects DATABRICKS_HOST and the SP identity automatically.
