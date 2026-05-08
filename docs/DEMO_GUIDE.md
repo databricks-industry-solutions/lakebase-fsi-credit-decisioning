@@ -13,7 +13,7 @@
 *Open the architecture image. Point to the LEFT side (legacy stack)*
 
 > "Credit decisioning today requires three separate systems.
-> A training environment, a feature store — Redis, Cassandra, Feast —
+> A training environment, a separate feature store,
 > and a model serving layer.
 > Three teams. Three on-call rotations.
 > Three gaps in the lineage trail when the auditor asks
@@ -62,5 +62,5 @@
 > "The architecture decision gate: p99 under 22 milliseconds
 > at 100 concurrent requests.
 > SLA was 50 milliseconds. We cleared it with room to spare.
-> No Redis. No Cassandra. No separate feature store.
+> No separate feature store infrastructure.
 > Train, serve, audit — one platform."

@@ -252,7 +252,7 @@ if verdict == "PASS":
     print()
     print("  Architecture: A — Lakebase-only feature store")
     print("  Lakebase meets the end-to-end SLA for real-time credit decisioning.")
-    print("  No Redis, no Cassandra, no separate serving infrastructure required.")
+    print("  No separate feature store infrastructure required.")
 else:
     print()
     print("  Architecture: C — Lakebase + Redis hybrid serving layer")
