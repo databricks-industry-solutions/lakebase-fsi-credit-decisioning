@@ -50,7 +50,7 @@ from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.getOrCreate()
 mlflow.set_registry_uri("databricks-uc")
-mlflow.set_experiment(f"/Shared/lakebase-fsi-credit-decisioning/{CATALOG}_{SCHEMA}/credit_scoring")
+mlflow.set_experiment("/Shared/lakebase-fsi-credit-decisioning/credit_scoring")
 
 print("LightGBM:", lgb.__version__)
 print("MLflow:  ", mlflow.__version__)
