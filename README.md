@@ -166,16 +166,79 @@ databricks jobs run-now --job-id <job-id-from-setup> --profile lakebase-demo
 
 ### 7. Deploy the Databricks App
 
-1. Edit `06_credit_app/app.yaml` — replace all `<placeholder>` values
-2. Deploy:
+**7a. Upload the App source to your workspace:**
 
 ```bash
+# Create workspace directory
+databricks workspace mkdirs /Shared/lakebase-fsi-credit-decisioning/app --profile lakebase-demo
+
+# Upload files
+databricks workspace import /Shared/lakebase-fsi-credit-decisioning/app/app.py \
+  --file 06_credit_app/app.py --format RAW --overwrite --profile lakebase-demo
+databricks workspace import /Shared/lakebase-fsi-credit-decisioning/app/requirements.txt \
+  --file 06_credit_app/requirements.txt --format RAW --overwrite --profile lakebase-demo
+```
+
+**7b. Create a local `app.yaml` with your real values** (do NOT commit this file):
+
+```bash
+cp 06_credit_app/app.yaml /tmp/app_deploy.yaml
+# Edit /tmp/app_deploy.yaml: replace all <placeholder> values
+databricks workspace import /Shared/lakebase-fsi-credit-decisioning/app/app.yaml \
+  --file /tmp/app_deploy.yaml --format RAW --overwrite --profile lakebase-demo
+```
+
+**7c. Create and deploy the App:**
+
+```bash
+databricks apps create lakebase-credit-decisioning \
+  --description "Real-time credit decisioning — Lakebase feature store" \
+  --profile lakebase-demo
+
+# Note: source-code-path must use the /Workspace/ prefix
 databricks apps deploy lakebase-credit-decisioning \
-  --source-code-path 06_credit_app/ \
+  --source-code-path /Workspace/Shared/lakebase-fsi-credit-decisioning/app \
   --profile lakebase-demo
 ```
 
-3. Open the App URL shown in the output
+**7d. Grant the App's service principal access to UC and Lakebase:**
+
+After the App is deployed, find the SP's `client_id` UUID and run the grants:
+
+```bash
+# Get the App's SP numeric ID
+SP_NUMERIC=$(databricks apps get lakebase-credit-decisioning --profile lakebase-demo \
+  | grep service_principal_id | awk '{print $2}')
+
+# Get the SP's client_id UUID
+SP_CLIENT_ID=$(databricks --profile lakebase-demo api get \
+  /api/2.0/preview/scim/v2/ServicePrincipals/$SP_NUMERIC \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['applicationId'])")
+
+echo "App SP client_id: $SP_CLIENT_ID"
+```
+
+Then run in a notebook (or via the SQL Statement Execution API):
+```sql
+GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id>`;
+GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
+GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
+```
+
+And via psycopg2 (connect to Lakebase with admin credential):
+```sql
+SELECT databricks_create_role('<sp-client-id>', 'service_principal');
+GRANT CONNECT ON DATABASE databricks_postgres TO "<sp-client-id>";
+GRANT USAGE ON SCHEMA public TO "<sp-client-id>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-client-id>";
+```
+
+> **Why these grants?** The App's built-in SP must be able to load the MLflow model from UC
+> and connect to Lakebase at startup. Missing UC grants → "Model not loaded" error.
+> Missing Lakebase role → pool initialization fails (falls back to user session tokens).
+
+5. Open the App URL shown in the output — log in with your Databricks SSO credentials
 
 ## Notebooks
 

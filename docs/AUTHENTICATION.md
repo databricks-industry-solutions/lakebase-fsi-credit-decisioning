@@ -59,11 +59,66 @@ If you want to run the data pipeline yourself:
 
 For workspace admins onboarding a new team member:
 
-- [ ] Grant USAGE on UC catalog: `GRANT USAGE ON CATALOG <catalog> TO <user>;`
-- [ ] Grant CAN_USE on Lakebase project: Catalog Explorer → Lakebase → instance → Permissions
-- [ ] Grant CAN_USE on the App: Apps → `lakebase-credit-decisioning` → Permissions
-- [ ] Run the postgres role creation SQL (Step 2 above) for the new user
-- [ ] Share the App URL with the user
+**Unity Catalog grants (run as admin in any notebook):**
+```sql
+-- UC catalog access
+GRANT USE CATALOG ON CATALOG <your_catalog> TO `<user-email>`;
+GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
+GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<user-email>`;
+```
+
+**Lakebase postgres role (run via psycopg2 or notebook 00):**
+```sql
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+SELECT databricks_create_role('<user-email>', 'end_user');
+GRANT CONNECT ON DATABASE databricks_postgres TO "<user-email>";
+GRANT USAGE ON SCHEMA public TO "<user-email>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<user-email>";
+```
+
+**Databricks UI grants:**
+- [ ] Catalog Explorer → Lakebase → instance → Permissions → add user with `CAN_USE`
+- [ ] Apps → `lakebase-credit-decisioning` → Permissions → add user with `CAN_USE`
+
+**Share with the user:**
+- [ ] App URL
+- [ ] Lakebase host (for notebooks: `ep-xxxxx.database.<region>.cloud.databricks.com`)
+
+---
+
+## App Service Principal — First-Time Setup
+
+When deploying the App for the first time, the App's service principal needs:
+
+**1. UC grants** (same as above, but use the SP's `client_id` UUID as the principal):
+```sql
+GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id-uuid>`;
+GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
+GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
+GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id-uuid>`;
+```
+
+**2. Lakebase postgres role** for the SP:
+```sql
+SELECT databricks_create_role('<sp-client-id-uuid>', 'service_principal');
+GRANT CONNECT ON DATABASE databricks_postgres TO "<sp-client-id-uuid>";
+GRANT USAGE ON SCHEMA public TO "<sp-client-id-uuid>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-client-id-uuid>";
+```
+
+**How to find the App's SP client_id:**
+```bash
+# Get the App's SP numeric ID
+databricks apps get <app-name> --profile <profile> | grep service_principal_id
+
+# Get the SP's client_id UUID
+databricks --profile <profile> api get /api/2.0/preview/scim/v2/ServicePrincipals/<numeric-id> \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['applicationId'])"
+```
+
+> These grants must be applied **after** the App is deployed (the SP is created at deploy time).
+> If the App shows "Model not loaded", the SP is missing the UC grants above.
 
 ---
 
