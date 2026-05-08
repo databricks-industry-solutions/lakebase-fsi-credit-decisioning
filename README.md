@@ -36,7 +36,16 @@ One catalog, one lineage graph, one team to operate.
 
 ## Architecture
 
-![Architecture diagram](architecture/reference-v2.drawio.png)
+![Solution architecture](architecture/reference-v2.drawio.png)
+
+See also `architecture/reference-v2.drawio` for the editable source.
+
+### Authentication Flow
+
+![Auth flow diagram](architecture/auth-flow.drawio.png)
+
+The diagram above shows how each identity type (interactive user, Databricks App, serverless job)
+authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for step-by-step setup.
 
 See also `architecture/reference-v2.drawio` for the editable source.
 
