@@ -3,15 +3,15 @@
 # Duration: ~4 minutes
 
 ## Setup
-- Abra `architecture/reference.png` em fullscreen (Preview → View → Best Fit)
-- Ou abra `architecture/reference.drawio` no draw.io para versão interativa
+- Open `architecture/reference-v2.drawio.png` fullscreen (Preview → View → Best Fit)
+- Or open `architecture/reference-v2.drawio` in draw.io for the interactive version
 
 ---
 
-## Roteiro
+## Script
 
 ### [0:00 – 0:40] The Problem
-*Abra a imagem da arquitetura. Aponte para o lado ESQUERDO (legacy stack)*
+*Open the architecture image. Point to the LEFT side (legacy stack)*
 
 > "Credit decisioning today requires three separate systems.
 > A training environment, a feature store — Redis, Cassandra, Feast —
@@ -23,7 +23,7 @@
 ---
 
 ### [0:40 – 1:30] The Databricks Stack
-*Aponte para o fluxo central da arquitetura*
+*Point to the central architecture flow*
 
 > "What we built replaces all of that.
 > Raw data comes in, lands in Delta — that's the training layer.
@@ -35,7 +35,7 @@
 ---
 
 ### [1:30 – 2:30] The Real-time Path
-*Aponte para o caminho de serving: Lakebase → Model → Decision Log*
+*Point to the serving path: Lakebase → Model → Decision Log*
 
 > "When a credit decision request comes in:
 > Step one — feature lookup from Lakebase. Under 15 milliseconds.
@@ -48,7 +48,7 @@
 ---
 
 ### [2:30 – 3:20] The Audit Trail
-*Aponte para o decision log e UC lineage*
+*Point to the decision log and UC lineage*
 
 > "Every decision is a row in the audit table.
 > The feature vector at decision time. The model version.
