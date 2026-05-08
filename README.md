@@ -38,7 +38,6 @@ One catalog, one lineage graph, one team to operate.
 
 ![Solution architecture](architecture/reference-v2.drawio.png)
 
-See also `architecture/reference-v2.drawio` for the editable source.
 
 ### Data Model
 
@@ -46,7 +45,6 @@ See also `architecture/reference-v2.drawio` for the editable source.
 
 Three tables, one PostgreSQL endpoint: `credit_features` (feature store, B-tree PK),
 `credit_limits` (derived, FK → features), `decision_log` (audit, composite PK + indexes).
-Editable source: `architecture/lakebase-data-model.drawio`.
 
 ### Authentication Flow
 
@@ -54,7 +52,6 @@ Editable source: `architecture/lakebase-data-model.drawio`.
 
 The diagram above shows how each identity type (interactive user, Databricks App, serverless job)
 authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for step-by-step setup.
-Editable source: `architecture/auth-flow.drawio`.
 
 ## App Screenshots
 
@@ -347,14 +344,15 @@ lakebase-fsi-credit-decisioning/
 │   ├── requirements.txt
 │   └── assets/custom.css
 ├── architecture/
-│   ├── reference-v2.drawio       # Editable architecture diagram
-│   └── reference-v2.drawio.png   # PNG export
+│   ├── reference-v2.drawio.png   # Solution architecture
+│   ├── lakebase-data-model.png   # Lakebase data model
+│   └── auth-flow.drawio.png      # Authentication flow
 ├── scripts/
 │   ├── setup.sh                  # Upload notebooks + create job
 │   └── sp_auth.py                # SP M2M OAuth helper (reusable)
 └── docs/
     ├── AUTHENTICATION.md         # Auth setup guide
-    └── ARCHITECTURE.md           # Architecture decisions and tradeoffs
+    └── DEMO_GUIDE.md             # Architecture walkthrough script for demos
 ```
 
 ## License

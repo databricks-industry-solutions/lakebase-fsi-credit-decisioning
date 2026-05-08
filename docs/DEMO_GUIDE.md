@@ -4,7 +4,6 @@
 
 ## Setup
 - Open `architecture/reference-v2.drawio.png` fullscreen (Preview → View → Best Fit)
-- Or open `architecture/reference-v2.drawio` in draw.io for the interactive version
 
 ---
 
