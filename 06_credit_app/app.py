@@ -325,6 +325,42 @@ def get_pool():
 
 
 # ── DB queries ────────────────────────────────────────────────────────────────
+def query_portfolio_stats() -> dict:
+    """Portfolio-level stats for the Risk Officer view: credit exposure by tier + decline reasons."""
+    try:
+        pool = get_pool()
+        conn = pool.getconn()
+        try:
+            cur = conn.cursor()
+            # Credit exposure by tier
+            cur.execute(
+                "SELECT tier, COUNT(*) as customers, "
+                "SUM(credit_limit) as total_limit, AVG(credit_limit) as avg_limit "
+                "FROM credit_limits GROUP BY tier ORDER BY avg_limit DESC"
+            )
+            tier_rows = cur.fetchall()
+            # Decline reason frequency
+            cur.execute(
+                "SELECT unnest(string_to_array(reason_codes, ',')) AS reason, COUNT(*) AS freq "
+                "FROM decision_log WHERE decision = %s AND reason_codes IS NOT NULL "
+                "GROUP BY reason ORDER BY freq DESC LIMIT 8",
+                ("DECLINE",),
+            )
+            reason_rows = cur.fetchall()
+            cur.close()
+        finally:
+            pool.putconn(conn)
+        total_limit = sum(float(r[2] or 0) for r in tier_rows)
+        return {
+            "tiers":        [(r[0], int(r[1]), float(r[2] or 0), float(r[3] or 0)) for r in tier_rows],
+            "total_limit":  total_limit,
+            "reason_freq":  [(r[0].strip(), int(r[1])) for r in reason_rows if r[0]],
+        }
+    except Exception as e:
+        print(f"WARN portfolio stats: {e}")
+        return {"tiers": [], "total_limit": 0, "reason_freq": []}
+
+
 def query_executive_stats() -> dict:
     try:
         pool = get_pool()
@@ -671,6 +707,80 @@ def _score_dist_fig(rows: list):
                 "x": 0.02, "y": 0.98},
         font={"family": "DM Sans"},
         bargap=0.04,
+    )
+    return fig
+
+
+# ── Business chart builders ───────────────────────────────────────────────────
+TIER_ORDER = ["PREMIUM", "STANDARD", "BASIC", "RESTRICTED", "UNKNOWN"]
+TIER_PALETTE = {
+    "PREMIUM":    "#FFD700",
+    "STANDARD":   "#4DA6FF",
+    "BASIC":      "#6B7A9C",
+    "RESTRICTED": "#FF3621",
+    "UNKNOWN":    "#374151",
+}
+
+REASON_LABELS = {
+    "RC01": "Low credit score",
+    "RC02": "Poor payment history",
+    "RC03": "High utilization",
+    "RC04": "Derogatory marks",
+    "RC05": "Debt-to-income exceeded",
+    "RC06": "Insufficient available credit",
+    "RC07": "KYC — multiple derogatory marks",
+    "RC08": "KYC — AML flag",
+}
+
+
+def _decline_reasons_fig(reason_freq: list):
+    if not reason_freq:
+        return None
+    labels = [REASON_LABELS.get(r[0], r[0]) for r in reason_freq]
+    values = [r[1] for r in reason_freq]
+    max_v  = max(values) or 1
+    colors = [_RED if v == max_v else _WARN if v >= max_v * 0.6 else _MUTED for v in values]
+    fig = go.Figure(go.Bar(
+        x=values, y=labels, orientation="h",
+        marker_color=colors, marker_line_width=0,
+        text=[str(v) for v in values], textposition="outside",
+        textfont={"size": 11, "color": _MUTED},
+        cliponaxis=False,
+    ))
+    fig.update_layout(
+        height=max(180, len(labels) * 32 + 20),
+        margin={"t": 4, "b": 4, "l": 5, "r": 50},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"showgrid": False, "showticklabels": False,
+               "range": [0, max(values) * 1.25]},
+        yaxis={"tickfont": {"size": 11, "color": _MUTED},
+               "categoryorder": "total ascending"},
+        font={"family": "DM Sans"},
+        showlegend=False,
+    )
+    return fig
+
+
+def _tier_distribution_fig(tiers: list):
+    if not tiers:
+        return None
+    labels = [t[0] for t in tiers]
+    counts = [t[1] for t in tiers]
+    colors = [TIER_PALETTE.get(t[0], TIER_PALETTE["UNKNOWN"]) for t in tiers]
+    fig = go.Figure(go.Bar(
+        x=labels, y=counts,
+        marker_color=colors, marker_line_width=0,
+        text=[f"{c:,}" for c in counts], textposition="auto",
+        textfont={"size": 11, "color": "#0F1623"},
+    ))
+    fig.update_layout(
+        height=180,
+        margin={"t": 4, "b": 20, "l": 30, "r": 10},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"tickfont": {"size": 11, "color": _MUTED}, "showgrid": False},
+        yaxis={"tickfont": {"size": 9, "color": _MUTED}, "gridcolor": _BORDER2},
+        font={"family": "DM Sans"},
+        showlegend=False,
     )
     return fig
 
@@ -1087,7 +1197,8 @@ _TECH = html.Div(id="page-technical", style={"display": "none"}, children=[
 _EXEC = html.Div(id="page-executive", style={"display": "none"}, children=[
     html.Div(style={"padding": "28px 36px", "maxWidth": "1500px", "margin": "0 auto"}, children=[
 
-        # KPI row
+        # Section: Decisioning KPIs
+        html.Div(_section_label("Decisioning Performance"), style={"marginBottom": "8px"}),
         dbc.Row(style={"marginBottom": "20px"}, children=[
             dbc.Col(_card(dbc.CardBody(
                 style={"padding": "18px 20px"},
@@ -1107,7 +1218,30 @@ _EXEC = html.Div(id="page-executive", style={"display": "none"}, children=[
             ), className="kpi-card"), width=3),
         ]),
 
-        # Charts row
+        # Section: Portfolio Exposure (business-focused)
+        html.Div(_section_label("Portfolio Exposure"), style={"marginBottom": "8px"}),
+        dbc.Row(style={"marginBottom": "20px"}, children=[
+            dbc.Col(_card(dbc.CardBody(
+                style={"padding": "18px 20px"},
+                children=[html.Div(id="exec-kpi-portfolio")]
+            ), className="kpi-card"), width=3),
+            dbc.Col(width=4, children=[
+                _card(dbc.CardBody(style={"padding": "18px 20px"}, children=[
+                    _section_label("Credit Tier Distribution"),
+                    html.Div(id="exec-tier-chart"),
+                ])),
+            ]),
+            dbc.Col(width=5, children=[
+                _card(dbc.CardBody(style={"padding": "18px 20px"}, children=[
+                    _section_label("Top Decline Reasons",
+                                   right=html.Span("last 200 decisions",
+                                                   style={"fontSize": "11px", "color": _MUTED})),
+                    html.Div(id="exec-reasons-chart"),
+                ])),
+            ]),
+        ]),
+
+        # Section: Decision analytics
         dbc.Row(style={"marginBottom": "20px"}, children=[
             dbc.Col(width=3, children=[
                 _card(dbc.CardBody(style={"padding": "18px 20px"}, children=[
@@ -1138,7 +1272,7 @@ _EXEC = html.Div(id="page-executive", style={"display": "none"}, children=[
         # Review queue
         _card(dbc.CardBody(style={"padding": "20px"}, children=[
             _section_label("Manual Review Queue",
-                           right=html.Span("DECLINE · score 0.40 – 0.50 · borderline",
+                           right=html.Span("Borderline declines — score 0.40 – 0.50 — recommend manual underwriting review",
                                            style={"fontSize": "11px", "color": _WARN})),
             html.Div(id="exec-review-queue"),
         ])),
@@ -1476,41 +1610,81 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
 
 
 @app.callback(
-    Output("exec-kpi-total",    "children"),
-    Output("exec-kpi-approval", "children"),
-    Output("exec-kpi-kyc",      "children"),
-    Output("exec-kpi-latency",  "children"),
-    Output("exec-donut",        "children"),
-    Output("exec-trend",        "children"),
-    Output("exec-score-dist",   "children"),
-    Output("exec-feed",         "children"),
-    Output("exec-review-queue", "children"),
+    Output("exec-kpi-total",      "children"),
+    Output("exec-kpi-approval",   "children"),
+    Output("exec-kpi-kyc",        "children"),
+    Output("exec-kpi-latency",    "children"),
+    Output("exec-kpi-portfolio",  "children"),
+    Output("exec-tier-chart",     "children"),
+    Output("exec-reasons-chart",  "children"),
+    Output("exec-donut",          "children"),
+    Output("exec-trend",          "children"),
+    Output("exec-score-dist",     "children"),
+    Output("exec-feed",           "children"),
+    Output("exec-review-queue",   "children"),
     Input("audit-interval", "n_intervals"),
     Input("_location", "pathname"),
 )
 def refresh_executive(_, pathname):
     if pathname != "/executive":
-        return [dash.no_update] * 9
+        return [dash.no_update] * 12
 
-    stats = query_executive_stats()
-    queue = query_review_queue(10)
-    rows  = stats["rows"]
+    stats     = query_executive_stats()
+    portfolio = query_portfolio_stats()
+    queue     = query_review_queue(10)
+    rows      = stats["rows"]
 
-    # KPIs
-    kpi_total    = _stat("Total Decisions", f"{stats['total']:,}",
-                         sub=f"last 200 logged")
+    # ── Decisioning KPIs ──────────────────────────────────────────────────────
+    kpi_total    = _stat("Applications Processed", f"{stats['total']:,}",
+                         sub="last 200 decisions")
     kpi_approval = _stat("Approval Rate", f"{stats['approval_rate']}%",
                          color=_GREEN if stats["approval_rate"] >= 60 else _RED,
-                         sub="last 200 decisions")
-    kpi_kyc      = _stat("KYC Flag Rate", f"{stats['kyc_flag_rate']}%",
+                         sub="auto-approved · last 200")
+    kpi_kyc      = _stat("AML / KYC Flags", f"{stats['kyc_flag_rate']}%",
                          color=_RED if stats["kyc_flag_rate"] > 20 else _WARN,
-                         sub="RC07 + RC08 combined")
+                         sub="flagged for review")
     avg_lat = stats["avg_latency"]
+    sla_ok  = avg_lat is not None and avg_lat < 50
     kpi_lat = _stat(
-        "Avg Decision Latency",
-        f"{avg_lat}ms" if avg_lat is not None else "—",
-        color=_GREEN if avg_lat and avg_lat < 30 else _WARN,
-        sub="Lakebase + APIs",
+        "SLA Compliance",
+        "WITHIN SLA" if sla_ok else ("—" if avg_lat is None else "BREACHED"),
+        color=_GREEN if sla_ok else (_MUTED if avg_lat is None else _RED),
+        sub=f"p99 < 50ms · avg {avg_lat}ms" if avg_lat else "p99 < 50ms target",
+    )
+
+    # ── Portfolio KPI ─────────────────────────────────────────────────────────
+    total_limit = portfolio["total_limit"]
+    premium_pct = 0
+    if portfolio["tiers"]:
+        premium_row = next((t for t in portfolio["tiers"] if t[0] == "PREMIUM"), None)
+        if premium_row:
+            total_customers = sum(t[1] for t in portfolio["tiers"])
+            premium_pct = round(premium_row[1] / total_customers * 100) if total_customers else 0
+    kpi_portfolio = _stat(
+        "Total Credit Portfolio",
+        f"${total_limit / 1_000_000:.1f}M" if total_limit >= 1_000_000 else f"${total_limit:,.0f}",
+        color=_BLUE,
+        sub=f"{premium_pct}% PREMIUM tier",
+    )
+
+    # ── Credit tier chart ─────────────────────────────────────────────────────
+    tier_fig = _tier_distribution_fig(portfolio["tiers"])
+    tier_chart = (
+        dcc.Graph(figure=tier_fig, config={"displayModeBar": False})
+        if tier_fig
+        else html.Div("Run decisions to see tier distribution.",
+                      style={"color": _MUTED, "fontSize": "12px", "padding": "48px 0",
+                             "textAlign": "center"})
+    )
+
+    # ── Decline reasons chart ─────────────────────────────────────────────────
+    reasons_fig = _decline_reasons_fig(portfolio["reason_freq"])
+    reasons_chart = (
+        dcc.Graph(figure=reasons_fig, config={"displayModeBar": False})
+        if reasons_fig
+        else html.Div("No declines logged yet.",
+                      style={"color": _MUTED, "fontSize": "12px", "padding": "48px 0",
+                             "textAlign": "center"})
     )
 
     # Donut
@@ -1668,7 +1842,9 @@ def refresh_executive(_, pathname):
         rq = html.Div("No borderline cases in queue.",
                       style={"color": _MUTED, "fontSize": "13px", "padding": "12px 0"})
 
-    return kpi_total, kpi_approval, kpi_kyc, kpi_lat, donut, trend, score_dist, feed, rq
+    return (kpi_total, kpi_approval, kpi_kyc, kpi_lat,
+            kpi_portfolio, tier_chart, reasons_chart,
+            donut, trend, score_dist, feed, rq)
 
 
 @app.callback(
