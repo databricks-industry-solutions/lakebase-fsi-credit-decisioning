@@ -31,6 +31,7 @@ dbutils.widgets.text("uc_catalog",     "",                           "UC Catalog
 dbutils.widgets.text("uc_schema",      "lakebase_credit_demo",           "UC Schema")
 dbutils.widgets.text("model_name",     "credit_scoring_v1",              "Registered model")
 dbutils.widgets.text("target_p99_ms",  "50",                             "SLA target p99 (ms)")
+dbutils.widgets.text("n_rows",          "100000",                         "Customer count (must match notebook 01)")
 
 LB_HOST      = dbutils.widgets.get("lakebase_host")
 LB_PORT      = int(dbutils.widgets.get("lakebase_port"))
@@ -53,6 +54,7 @@ CATALOG      = dbutils.widgets.get("uc_catalog").strip()
 SCHEMA       = dbutils.widgets.get("uc_schema").strip()
 MODEL_NAME   = dbutils.widgets.get("model_name").strip()
 TARGET_P99   = float(dbutils.widgets.get("target_p99_ms"))
+N_ROWS       = int(dbutils.widgets.get("n_rows"))
 
 # COMMAND ----------
 # MAGIC %md ## 1. Dependencies + model load
