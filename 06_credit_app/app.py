@@ -64,7 +64,7 @@ TIER_COLORS = {
     "UNKNOWN": "#6B7A9C",
 }
 
-# Demo customer IDs confirmed in workspace (2026-05-06)
+# Demo customer IDs — loaded at startup for the sidebar quick-select buttons
 DEMO_SCENARIOS = {
     "approve":  62850,   # score 849, derogatory=0 → APPROVE
     "decline":  13298,   # score 513, RC01+RC03+RC05 → DECLINE
