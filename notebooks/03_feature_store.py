@@ -46,6 +46,12 @@ LB_PASS = dbutils.widgets.get("lakebase_pass")
 
 
 
+
+# COMMAND ----------
+# MAGIC %run ./util_lakebase_auth
+
+# COMMAND ----------
+
 # ── Authentication ─────────────────────────────────────────────────────────────
 if not LB_PASS:
     LB_PASS = _get_lakebase_credential(LB_HOST, LB_USER)

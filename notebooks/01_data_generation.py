@@ -35,10 +35,13 @@ LB_PASS  = dbutils.widgets.get("lakebase_pass")
 
 
 
+
+# COMMAND ----------
+# MAGIC %run ./util_lakebase_auth
+
+# COMMAND ----------
+
 # ── Authentication ─────────────────────────────────────────────────────────────
-# If lakebase_pass widget is empty, auto-detect credential for the current context.
-# Defined in util_lakebase_auth.py — include it with: %run ./util_lakebase_auth
-# (After uploading to workspace, replace the line below with the %run magic)
 if not LB_PASS:
     LB_PASS = _get_lakebase_credential(LB_HOST, LB_USER)
 CATALOG  = dbutils.widgets.get("uc_catalog").strip()
