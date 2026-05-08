@@ -1,7 +1,71 @@
 # Lakebase Authentication Guide
 
 This document covers authentication patterns for connecting to Lakebase from notebooks,
-automated jobs, and the Databricks App.
+automated jobs, and the Databricks App. It also includes the onboarding steps for new users
+who want to run the notebooks or access the deployed App.
+
+---
+
+## New User Onboarding
+
+If you received access to a workspace where this SA is already deployed (notebooks uploaded,
+App running), follow these steps to get started.
+
+### Step 1 — Get workspace access
+
+Ask the workspace admin to grant you:
+- **USAGE** on the UC catalog (e.g. `your_catalog`)
+- **CAN_USE** on the Lakebase project (Catalog Explorer → Lakebase → your instance → Permissions)
+- **CAN_USE** on the Databricks App (Apps → `lakebase-credit-decisioning` → Permissions)
+
+### Step 2 — Create your Lakebase postgres role (one-time)
+
+Before you can connect to Lakebase from a notebook, your identity needs a postgres role.
+Run the following SQL **once** using any admin credential (ask a workspace admin if you don't
+have one):
+
+```sql
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+
+-- Replace <your-email> with your Databricks email
+SELECT databricks_create_role('<your-email@company.com>', 'end_user');
+
+GRANT CONNECT ON DATABASE databricks_postgres TO "<your-email@company.com>";
+GRANT USAGE ON SCHEMA public TO "<your-email@company.com>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<your-email@company.com>";
+```
+
+> **How to run this SQL:** Connect to Lakebase using an admin credential (from notebook 00 or
+> any PostgreSQL client), or ask the admin who set up the SA to run it for you.
+
+### Step 3 — Open the App (no setup needed)
+
+Open the App URL in your browser. Log in with your Databricks SSO credentials.
+The App uses your browser session (`X-Forwarded-Access-Token`) to connect to Lakebase
+on your behalf — no additional config needed after Step 2.
+
+### Step 4 — Run notebooks (optional)
+
+If you want to run the data pipeline yourself:
+1. Open notebook `00_setup_verify` in the Databricks workspace
+2. Fill the widgets: `lakebase_host`, `lakebase_user` (your email), `uc_catalog`
+3. Leave `lakebase_pass` **empty** — it will auto-detect your session token
+4. Run all cells to verify connectivity
+5. Then run notebooks 01 → 05 in order
+
+---
+
+## Admin Checklist — Onboarding a New User
+
+For workspace admins onboarding a new team member:
+
+- [ ] Grant USAGE on UC catalog: `GRANT USAGE ON CATALOG <catalog> TO <user>;`
+- [ ] Grant CAN_USE on Lakebase project: Catalog Explorer → Lakebase → instance → Permissions
+- [ ] Grant CAN_USE on the App: Apps → `lakebase-credit-decisioning` → Permissions
+- [ ] Run the postgres role creation SQL (Step 2 above) for the new user
+- [ ] Share the App URL with the user
+
+---
 
 ## Quick Reference
 
