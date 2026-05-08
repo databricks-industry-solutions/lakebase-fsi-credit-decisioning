@@ -47,8 +47,6 @@ See also `architecture/reference-v2.drawio` for the editable source.
 The diagram above shows how each identity type (interactive user, Databricks App, serverless job)
 authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for step-by-step setup.
 
-See also `architecture/reference-v2.drawio` for the editable source.
-
 ## What's Included
 
 | Component | Description |
