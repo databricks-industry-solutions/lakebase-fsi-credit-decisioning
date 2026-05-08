@@ -77,15 +77,18 @@ databricks auth login \
   --profile lakebase-demo
 ```
 
-### 3. Create a Lakebase instance
+### 3. Create a Lakebase instance (UI — required before running any notebook)
 
-In the Databricks workspace UI:
+> **Note:** Lakebase instances are created through the Databricks UI. There is no CLI or
+> API to create an instance — this step must be done in the browser before running the setup script.
 
 1. Open **Catalog Explorer** (left sidebar)
 2. Click **Lakebase** → **Create Lakebase**
-3. Choose a name (e.g. `lakebase-credit-demo`) and your region
-4. Once created, click the instance → copy the **Host** value
-5. Click **Generate credential** → copy the token
+3. Choose a name (e.g. `lakebase-credit-demo`) and your cloud region
+4. Wait ~2 minutes for provisioning
+5. Click the instance → copy the **Host** value (format: `ep-xxxxx.database.<region>.cloud.databricks.com`)
+6. Click **Generate credential** → copy the token (~60 min TTL)
+7. On the instance detail page, also copy the **Endpoint path** (format: `projects/<name>/branches/<branch>/endpoints/primary`) — needed for the secret scope in Step 4
 
 ### 4. Create the Databricks secret scope
 
