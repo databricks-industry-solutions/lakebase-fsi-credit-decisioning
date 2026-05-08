@@ -1,107 +1,209 @@
 # Lakebase Authentication Guide
 
-This document covers authentication patterns for connecting to Lakebase from different Databricks contexts.
+This document covers authentication patterns for connecting to Lakebase from notebooks,
+automated jobs, and the Databricks App.
 
 ## Quick Reference
 
-| Scenario | Credential | Works from |
+| Scenario | Pattern | Setup required |
 |---|---|---|
-| Interactive notebook (browser) | OAuth session token (auto) | Cluster driver — public endpoint |
-| Databricks Job (classic cluster) | OAuth JWT `all-apis` scope | Cluster driver — public endpoint |
-| Databricks Job (serverless) | OAuth JWT `all-apis` scope | Private endpoint — same auth required |
-| Databricks App | SDK WorkspaceClient (SP) | App runtime — public endpoint |
-| External app / local dev | Generate credential (UI) | Public endpoint |
+| Interactive notebook (browser) | Context token → `generate_database_credential` | Role creation (one-time) |
+| Databricks Job (serverless) | Pass credential as job parameter | Role creation (one-time) |
+| Databricks App (any user) | `X-Forwarded-Access-Token` → `generate_database_credential` | Role creation per user |
+| Databricks App (SP background) | SDK `generate_database_credential` | SP role creation (one-time) |
 
-## Recommended Pattern: Pass OAuth Token via Job Parameters
+## Prerequisites: Create a Lakebase Postgres Role (one-time per identity)
 
-The most reliable pattern for automated jobs is to obtain a fresh OAuth token with `all-apis` scope and pass it directly as the `lakebase_pass` notebook parameter.
+**This is the most common setup step people miss.**
 
-```bash
-# Get fresh token (requires: databricks auth login with all-apis scope)
-FRESH_TOKEN=$(databricks auth token --profile <your-profile> --output json | \
-    python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+Before any identity (human user or service principal) can use `generate_database_credential`,
+that identity needs a Postgres role in the Lakebase instance. Granting `CAN_USE` in the
+Databricks UI is **not sufficient** — the postgres role must be created explicitly via SQL.
 
-# Pass directly to notebook job (not via {{secrets/...}} interpolation)
-databricks jobs run-now <JOB_ID> --json '{
-  "job_parameters": {
-    "lakebase_pass": "'"$FRESH_TOKEN"'"
-  }
-}'
+### For a human user (interactive notebooks, jobs running as you)
+
+Connect to the Lakebase instance using your own credential, then run:
+
+```sql
+-- Enable the Databricks auth extension (idempotent)
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+
+-- Create your postgres role
+-- Replace <your-email> with your Databricks email address
+SELECT databricks_create_role('<your-email@company.com>', 'end_user');
+
+-- Grant permissions on the schema
+GRANT CONNECT ON DATABASE databricks_postgres TO "<your-email@company.com>";
+GRANT USAGE ON SCHEMA public TO "<your-email@company.com>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<your-email@company.com>";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "<your-email@company.com>";
 ```
 
-**Token expiry:** OAuth session tokens expire in ~1 hour. For longer pipelines, use a Service Principal with M2M OAuth (see below).
+### For a Service Principal (automated jobs, App background tasks)
 
-## Production Pattern: Service Principal M2M OAuth
+The SP's `client_id` (UUID) is its postgres username:
 
-For production workloads, use a Service Principal:
+```sql
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+
+-- Replace <sp-client-id> with the SP's UUID (not display name)
+SELECT databricks_create_role('<sp-client-id-uuid>', 'service_principal');
+
+GRANT CONNECT ON DATABASE databricks_postgres TO "<sp-client-id-uuid>";
+GRANT USAGE ON SCHEMA public TO "<sp-client-id-uuid>";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-client-id-uuid>";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "<sp-client-id-uuid>";
+```
+
+> **How to get the SP's client_id:** Account Console → Service Principals → [SP] → copy the UUID.
+> In the Databricks Apps runtime, this is the `DATABRICKS_CLIENT_ID` env var.
+
+---
+
+## Pattern 1: Interactive Notebooks
+
+When running interactively in the browser, the notebooks auto-detect your session token and
+call `generate_database_credential` (via the `util_lakebase_auth` utility notebook).
+
+**No configuration needed** beyond having your postgres role created (see Prerequisites).
+
+Fill the `lakebase_host` and `lakebase_user` widgets. Leave `lakebase_pass` empty — it will
+be auto-filled.
+
+---
+
+## Pattern 2: Databricks Jobs (recommended approach)
+
+For automated jobs, generate a fresh credential before triggering the run and pass it as a
+job parameter. This avoids dependency on the SDK `generate_database_credential` inside
+serverless compute (which requires additional NCC configuration in some workspaces).
 
 ```python
-import urllib.request, urllib.parse, json
+import os
+os.environ["DATABRICKS_CONFIG_PROFILE"] = "<your-profile>"
+from databricks.sdk import WorkspaceClient
+w = WorkspaceClient()
 
-def get_lakebase_token(ws_host, client_id, client_secret):
-    data = urllib.parse.urlencode({
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "scope": "all-apis",
-    }).encode()
-    req = urllib.request.Request(
-        f"{ws_host}/oidc/v1/token",
-        data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.loads(r.read()).get("access_token", "")
+ENDPOINT = "projects/<your-project>/branches/<branch>/endpoints/primary"
+cred = w.postgres.generate_database_credential(endpoint=ENDPOINT)
+lb_pass = cred.token
 
-# Credentials from Databricks secrets scope
-cid  = dbutils.secrets.get("lakebase-demo", "sp_client_id")
-csec = dbutils.secrets.get("lakebase-demo", "sp_client_secret")
-token = get_lakebase_token("https://<workspace>.cloud.databricks.com", cid, csec)
+# Update job parameters with fresh credential
+w.jobs.update(job_id=<JOB_ID>, new_settings={
+    "tasks": [...],  # existing tasks
+    "base_parameters": {"lakebase_pass": lb_pass, ...}
+})
+w.jobs.run_now(job_id=<JOB_ID>)
 ```
 
-**Requirements:**
-1. Create a Service Principal in the Account Console
-2. Generate client credentials (Account Console → Service Principals → [SP] → Add secret)
-3. Grant the SP access to the Lakebase instance (Catalog Explorer → Lakebase → Permissions)
-4. Store client_id and client_secret in a Databricks secret scope
+**Credential TTL:** ~14 minutes. For a pipeline that takes 20+ minutes, trigger it immediately
+after generating the credential. The notebooks themselves execute fast enough that a single
+credential covers the full run.
 
-## Databricks Apps Authentication
+**Alternative for longer pipelines:** Store SP credentials in the secret scope and use
+SP M2M OAuth (see Pattern 4 below).
 
-Databricks Apps automatically inject `DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` for the App's built-in service principal. Use the SDK to get a token:
+---
+
+## Pattern 3: Databricks App
+
+The App uses a two-tier auth approach:
+
+### Tier 1: User identity (browser sessions)
+When a user opens the App in their browser, the runtime injects `X-Forwarded-Access-Token`
+with the user's own OAuth token. The App captures this on page load and exchanges it for a
+postgres credential:
+
+```python
+# In app.py — captures user token on every page request
+@server.before_request
+def _capture_user_bearer():
+    bearer = flask.request.headers.get("X-Forwarded-Access-Token", "")
+    if bearer:
+        # Exchange for postgres-specific credential
+        tok = _exchange_for_pg_cred(bearer)
+        # Pool rebuilt with this user's identity
+```
+
+Each user connects to Lakebase using their own identity. All users with `CAN_USE` on the
+App can access Lakebase, as long as their postgres role has been created (see Prerequisites).
+
+### Tier 2: SDK fallback (startup, background tasks)
+If no user token is available (App startup, non-browser requests), the SDK uses the App's
+built-in service principal:
 
 ```python
 from databricks.sdk import WorkspaceClient
-headers = WorkspaceClient().config.authenticate()
-token = headers.get("Authorization", "").replace("Bearer ", "")
+w = WorkspaceClient()
+cred = w.postgres.generate_database_credential(endpoint=LAKEBASE_ENDPOINT_PATH)
 ```
 
-**Requirement:** The App's service principal must be granted access to the Lakebase instance via Catalog Explorer → Lakebase → Permissions.
+This requires the App's SP to have its postgres role created (see Prerequisites for SP).
 
-## Known Limitations
+The App's SP `client_id` is available as `os.environ.get("DATABRICKS_CLIENT_ID")` in the
+Apps runtime.
 
-### Private vs Public Endpoint
+---
 
-Lakebase instances expose two endpoints:
-- **Public endpoint** (`18.x.x.x`): accessible from outside Databricks, accepts OAuth JWT
-- **Private endpoint** (`192.168.x.x`): used by Databricks serverless compute, requires specific NCC configuration
+## Pattern 4: Service Principal M2M OAuth (production jobs)
 
-When connecting from serverless jobs or notebooks, the DNS resolves to the private endpoint. The credentials generated via "Generate credential" in the UI work on the public endpoint but may fail on the private endpoint.
+For long-running or scheduled pipelines, use a Service Principal with stored credentials:
 
-**Workaround for serverless:** Pass an OAuth token with `all-apis offline_access` scope (obtained via `databricks auth token`) directly as the notebook parameter. This token is accepted by both endpoints.
+**Setup (one-time):**
+```bash
+# Store SP credentials in secret scope
+databricks secrets put-secret lakebase-demo sp_client_id --string-value "<sp-uuid>"
+databricks secrets put-secret lakebase-demo sp_client_secret --string-value "<sp-secret>"
+```
 
-**Production fix:** Configure Network Connectivity Configuration (NCC) for your serverless workspace. See Databricks documentation: "Configure private connectivity to resources in your VPC".
+The `util_lakebase_auth` notebook will automatically use these (Step 3 in the auth chain)
+if `lakebase_pass` is not provided and Steps 0-2 fail.
 
-### `{{secrets/...}}` Interpolation
+**Requirements:**
+1. Create a Service Principal in Account Console
+2. Generate client credentials (Account Console → Service Principals → [SP] → Add secret)
+3. Grant `CAN_USE` on the Lakebase project (Catalog Explorer → Lakebase → Permissions)
+4. Create the postgres role via SQL (see Prerequisites for SP)
+5. Store credentials in `lakebase-demo` secret scope
 
-The `{{secrets/scope/key}}` syntax in job `base_parameters` may not be interpolated in all Databricks workspace configurations. If secrets are not being substituted, pass the actual token value directly instead.
+---
 
-### `resources:` section in App YAML
+## Secret Scope Reference
 
-The `resources:` section in `app.yaml` for mapping secrets to environment variables may not be supported in all App runtime versions. Use direct `env.value` entries as a workaround.
+The notebooks and the App use a Databricks secret scope named `lakebase-demo`.
 
-## Open Questions
+| Key | Purpose | Required |
+|---|---|---|
+| `endpoint_path` | Lakebase endpoint for `generate_database_credential` | Yes |
+| `sp_client_id` | SP UUID for M2M OAuth (jobs, App fallback) | Only for SP auth |
+| `sp_client_secret` | SP secret for M2M OAuth | Only for SP auth |
 
-See `docs/OPEN_QUESTIONS.md` for pending questions to the Lakebase product team about:
-- Correct `generate-credential` API endpoint for private endpoint auth
-- NCC configuration requirements for serverless → Lakebase connectivity
+**Create the scope:**
+```bash
+databricks secrets create-scope lakebase-demo --profile <your-profile>
+databricks secrets put-secret lakebase-demo endpoint_path \
+  --string-value "projects/<name>/branches/<branch>/endpoints/primary"
+```
+
+---
+
+## Troubleshooting
+
+### `password authentication failed for user '<email>'`
+The postgres role for your user does not exist. Run the `databricks_create_role` SQL from
+the Prerequisites section.
+
+### `generate_database_credential` fails in serverless job
+The SDK inside serverless compute may not automatically resolve the workspace host in all
+configurations. Use Pattern 2 (pass credential as job parameter) as the workaround.
+
+### App shows `DB pool ready` but queries fail
+The App's SP doesn't have the postgres role. Run the SP role creation SQL from Prerequisites,
+using the App's `DATABRICKS_CLIENT_ID` as the `client_id`.
+
+### Credential expires mid-pipeline
+Credentials have a ~14-minute TTL. For pipelines longer than 14 minutes running sequentially,
+the credential in `lakebase_pass` may expire between notebooks. Use SP M2M OAuth (Pattern 4)
+for long pipelines — SP credentials do not expire and refresh automatically.
