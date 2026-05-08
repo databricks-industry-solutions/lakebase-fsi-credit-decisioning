@@ -4,6 +4,10 @@
 
 Train, serve, and audit credit decisions on a single platform. No Redis. No Cassandra. No SAS.
 
+## Business Overview
+
+Financial institutions running credit decisioning on SAS or multi-system stacks (training environment + Redis/Cassandra feature store + model server) face fragmented lineage, three separate on-call teams, and weeks of work to answer a single regulatory audit question. This accelerator demonstrates how Databricks Lakebase collapses all three into one platform: train on Delta, serve features from Lakebase in real-time (&lt;15ms p95), log every decision to Delta, and trace the full audit trail through Unity Catalog lineage — without a single external system.
+
 [![Databricks](https://img.shields.io/badge/Databricks-Lakebase-FF3621)](https://docs.databricks.com/oltp/)
 [![DBR](https://img.shields.io/badge/DBR-15.4_ML_LTS-blue)](https://docs.databricks.com/release-notes/runtime/15.4ml.html)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
