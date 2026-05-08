@@ -268,26 +268,49 @@ _lb_pg_tok_ts: float = 0.0
 _user_bearer: str = ""
 _user_bearer_ts: float = 0.0
 _model = None
+_model_lock = __import__("threading").Lock()
 
+def _load_model_if_needed() -> None:
+    """Lazy model load on first request using available token (user or SP)."""
+    global _model, _feature_importances
+    if _model is not None:
+        return
+    token = _user_bearer or os.getenv("DATABRICKS_TOKEN", "")
+    if not token:
+        return
+    with _model_lock:
+        if _model is not None:
+            return
+        try:
+            old = os.environ.get("DATABRICKS_TOKEN", "")
+            os.environ["DATABRICKS_TOKEN"] = token
+            mlflow.set_registry_uri("databricks-uc")
+            model = mlflow.lightgbm.load_model(f"models:/{CATALOG}.{SCHEMA}.{MODEL_NM}@champion")
+            os.environ["DATABRICKS_TOKEN"] = old
+            _model = model
+            raw = _model.feature_importance(importance_type="gain")
+            total = float(raw.sum()) or 1.0
+            _feature_importances = {
+                FEATURES[i]: round(float(raw[i]) / total, 4)
+                for i in range(len(FEATURES))
+            }
+            print(f"Model loaded lazily ({len(_feature_importances)} features)")
+        except Exception as e:
+            os.environ["DATABRICKS_TOKEN"] = old if 'old' in dir() else ""
+            print(f"WARN model lazy load: {e}")
+
+_feature_importances: dict[str, float] = {}
+
+# Try eager load at startup (works if SP has EXECUTE ON MODEL)
 try:
     mlflow.set_registry_uri("databricks-uc")
     _model = mlflow.lightgbm.load_model(f"models:/{CATALOG}.{SCHEMA}.{MODEL_NM}@champion")
-    print("Model loaded.")
+    raw = _model.feature_importance(importance_type="gain")
+    total = float(raw.sum()) or 1.0
+    _feature_importances = {FEATURES[i]: round(float(raw[i]) / total, 4) for i in range(len(FEATURES))}
+    print("Model loaded at startup.")
 except Exception as e:
-    print(f"WARN model: {e}")
-
-_feature_importances: dict[str, float] = {}
-try:
-    if _model is not None:
-        raw = _model.feature_importance(importance_type="gain")
-        total = float(raw.sum()) or 1.0
-        _feature_importances = {
-            FEATURES[i]: round(float(raw[i]) / total, 4)
-            for i in range(len(FEATURES))
-        }
-        print(f"Feature importances: {_feature_importances}")
-except Exception as e:
-    print(f"WARN feature importances: {e}")
+    print(f"WARN model startup: {e} — will retry on first user request")
 
 try:
     _pool = _make_pool()
@@ -482,6 +505,8 @@ def run_decision(customer_id: int) -> dict:
                                feat.get("derogatory_marks", 0),
                                feat.get("payment_history", 1.0))
 
+    if _model is None:
+        _load_model_if_needed()
     if _model is None:
         return {"error": "Model not loaded — check UC registry"}
 
