@@ -56,6 +56,24 @@ The diagram above shows how each identity type (interactive user, Databricks App
 authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for step-by-step setup.
 Editable source: `architecture/auth-flow.drawio`.
 
+## App Screenshots
+
+### Landing Page
+![Landing page](docs/screenshots/app_landing.png)
+*Persona selector with benchmark stats — p50=4ms, p95=14ms, p99=22ms at 100 concurrent requests on Databricks Serverless.*
+
+### Technical Analyst — APPROVE
+![APPROVE decision](docs/screenshots/app_technical_approve.png)
+*Customer #62850 (PREMIUM tier): model score 100%, no adverse factors. Full decision pipeline trace shows Lakebase lookup (4.2ms), KYC/AML gate, bureau enrichment (44.3ms), and LightGBM inference (<1ms). Feature vector served directly from Lakebase.*
+
+### Technical Analyst — DECLINE with KYC Flag
+![KYC DECLINE decision](docs/screenshots/app_technical_kyc.png)
+*Customer #941 (STANDARD tier): score 99% DECLINE with RC04 (derogatory marks), RC05 (debt-to-income), and RC07 (KYC flag). All reason codes traceable to the feature vector stored in Lakebase.*
+
+### Risk Officer Dashboard
+![Risk Officer dashboard](docs/screenshots/app_risk_officer.png)
+*Portfolio view: 200 applications processed, 89.0% approval rate, $1.03B total credit portfolio (27% PREMIUM tier). Credit tier distribution, top decline reasons, and approval rate trend — all reading live from Lakebase with SLA compliance (avg 5.9ms, within 50ms target).*
+
 ## What's Included
 
 | Component | Description |

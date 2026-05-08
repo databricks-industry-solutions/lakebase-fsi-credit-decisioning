@@ -29,3 +29,4 @@ texput.log
 # Local development overrides
 app.yaml.local
 mlruns/
+demo_screenshots.yaml
