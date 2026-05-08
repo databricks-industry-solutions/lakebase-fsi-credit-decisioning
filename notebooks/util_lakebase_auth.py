@@ -3,7 +3,7 @@
 # MAGIC # Lakebase Auth Utility
 # MAGIC
 # MAGIC **Do not run this notebook directly.** Include it from other notebooks with:
-# MAGIC ```python
+# MAGIC ```
 # MAGIC # MAGIC %run ./util_lakebase_auth
 # MAGIC ```
 # MAGIC
@@ -13,13 +13,18 @@
 # MAGIC ### Authentication priority
 # MAGIC | Priority | Context | Mechanism |
 # MAGIC |---|---|---|
-# MAGIC | 1 | Interactive notebook | Notebook context token → credential exchange |
-# MAGIC | 2 | Serverless job / App | `DATABRICKS_TOKEN` env var → credential exchange |
-# MAGIC | 3 | SP-based automation | SP M2M OAuth → credential exchange |
-# MAGIC | 4 | Manual override | `databricks_pat` secret → credential exchange |
+# MAGIC | 0 | Any Databricks runtime | SDK `generate_database_credential` (recommended) |
+# MAGIC | 1 | Interactive notebook | Notebook context token → direct connect |
+# MAGIC | 2 | Serverless job / App | `DATABRICKS_TOKEN` + API exchange |
+# MAGIC | 3 | SP-based automation | SP M2M OAuth → API exchange |
+# MAGIC | 4 | Manual override | `databricks_pat` secret |
 # MAGIC
-# MAGIC The credential exchange (`/api/2.0/postgres/credentials`) is required for
-# MAGIC private-endpoint Lakebase instances (the default for Databricks workspaces).
+# MAGIC **Secret scope required:** `lakebase-demo` with key `endpoint_path`.
+# MAGIC Create it with:
+# MAGIC ```bash
+# MAGIC databricks secrets create-scope lakebase-demo
+# MAGIC databricks secrets put-secret lakebase-demo endpoint_path --string-value "<your-endpoint-path>"
+# MAGIC ```
 
 # COMMAND ----------
 
@@ -31,14 +36,26 @@ def _get_lakebase_credential(lb_host: str, lb_user: str) -> str:
     """
     import json, os, urllib.request, urllib.parse
 
-    # Workspace host: injected by Databricks runtime in jobs/apps.
-    # In interactive notebooks it is not set, but the direct-connect path
-    # (step 2b below) covers that case.
+    # ── Step 0: SDK generate_database_credential (works in ALL Databricks runtimes) ──
+    # This is the official documented pattern. The SDK auto-discovers the workspace host
+    # and token from the runtime environment — no DATABRICKS_HOST needed.
+    try:
+        endpoint_path = dbutils.secrets.get("lakebase-demo", "endpoint_path")
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        cred = w.postgres.generate_database_credential(endpoint=endpoint_path)
+        tok = cred.token if hasattr(cred, "token") else ""
+        if tok:
+            print(f"Auth: SDK generate_database_credential OK (len={len(tok)})")
+            return tok
+    except Exception as e:
+        print(f"Auth: SDK generate_database_credential skipped ({e.__class__.__name__}: {e})")
+
+    # ── Helper: exchange workspace bearer → Lakebase credential via REST ──────────
     WS_HOST = os.environ.get("DATABRICKS_HOST", "").rstrip("/")
 
     def _exchange(bearer: str) -> str:
-        """Exchange a workspace bearer token for a Lakebase-specific credential."""
-        if not WS_HOST:
+        if not (WS_HOST and bearer):
             return ""
         try:
             endpoint_path = dbutils.secrets.get("lakebase-demo", "endpoint_path")
@@ -52,13 +69,13 @@ def _get_lakebase_credential(lb_host: str, lb_user: str) -> str:
             with urllib.request.urlopen(req, timeout=15) as r:
                 tok = json.loads(r.read()).get("token", "")
             if tok:
-                print("Auth: credential exchange OK")
+                print("Auth: REST credential exchange OK")
             return tok
         except Exception as xe:
-            print(f"Auth: credential exchange skipped ({xe.__class__.__name__}: {xe})")
+            print(f"Auth: REST exchange skipped ({xe.__class__.__name__}: {xe})")
             return ""
 
-    # ── Step 1: DATABRICKS_TOKEN env var (jobs, Apps, serverless clusters) ──────
+    # ── Step 1: DATABRICKS_TOKEN env var (injected in serverless jobs/Apps) ───────
     bearer = os.environ.get("DATABRICKS_TOKEN", "")
     if bearer:
         print(f"Auth: bearer from DATABRICKS_TOKEN (len={len(bearer)})")
@@ -74,7 +91,7 @@ def _get_lakebase_credential(lb_host: str, lb_user: str) -> str:
             pass
 
     if bearer:
-        # 2a. Try direct connect first — works when Lakebase has a public endpoint
+        # Try direct connect first — works on public endpoints (interactive mode)
         try:
             import psycopg2 as _pg
             _c = _pg.connect(host=lb_host, port=5432, dbname="databricks_postgres",
@@ -85,7 +102,6 @@ def _get_lakebase_credential(lb_host: str, lb_user: str) -> str:
             return bearer
         except Exception:
             pass
-        # 2b. Private endpoint → exchange bearer for Lakebase-specific token
         tok = _exchange(bearer)
         if tok:
             return tok
@@ -130,9 +146,8 @@ def _get_lakebase_credential(lb_host: str, lb_user: str) -> str:
         "Could not obtain a Lakebase credential.\n"
         "Options:\n"
         "  1. Run interactively in the Databricks workspace browser (context token auto-used)\n"
-        "  2. Fill the 'lakebase_pass' widget with a token from:\n"
-        "     databricks auth token --profile <your-profile>\n"
-        "  3. Store a Service Principal in secret scope 'lakebase-demo':\n"
-        "     Keys: sp_client_id, sp_client_secret, endpoint_path\n"
+        "  2. Fill the 'lakebase_pass' widget with a fresh token\n"
+        "  3. Ensure secret scope 'lakebase-demo' has 'endpoint_path' key set\n"
+        "  4. For jobs: add 'sp_client_id' + 'sp_client_secret' to the secret scope\n"
         "  See docs/AUTHENTICATION.md for the full setup guide."
     )
