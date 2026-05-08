@@ -56,12 +56,11 @@ _TEXT   = "#D4DCF0"
 _LTEXT  = "#EEF2FF"
 
 TIER_COLORS = {
-    "PREMIUM": "#FFD700",
-    "GOLD":    "#FFA500",
-    "SILVER":  "#A8B4CC",
-    "BRONZE":  "#CD7F32",
-    "BASIC":   "#6B7A9C",
-    "UNKNOWN": "#6B7A9C",
+    "PREMIUM":    "#FFD700",
+    "STANDARD":   "#A8B4CC",
+    "BASIC":      "#6B7A9C",
+    "RESTRICTED": "#C0392B",
+    "UNKNOWN":    "#4A5568",
 }
 
 # Demo customer IDs — loaded at startup for the sidebar quick-select buttons
@@ -280,8 +279,8 @@ except Exception as e:
 _feature_importances: dict[str, float] = {}
 try:
     if _model is not None:
-        raw = _model.feature_importances_
-        total = raw.sum() or 1.0
+        raw = _model.feature_importance(importance_type="gain")
+        total = float(raw.sum()) or 1.0
         _feature_importances = {
             FEATURES[i]: round(float(raw[i]) / total, 4)
             for i in range(len(FEATURES))

@@ -61,6 +61,7 @@ SCHEMA  = dbutils.widgets.get("uc_schema").strip()
 # COMMAND ----------
 
 import psycopg2
+import psycopg2.extras
 import time
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
@@ -171,26 +172,21 @@ conn = get_conn()
 conn.autocommit = False
 cur = conn.cursor()
 
-PAGE = 5_000
-t0 = time.perf_counter()
-updated = 0
-for start in range(0, len(silver_pd), PAGE):
-    page = silver_pd.iloc[start:start + PAGE]
-    tuples = list(page.itertuples(index=False, name=None))
-    cur.executemany("""
-        UPDATE credit_features
-           SET debt_to_income  = %s,
-               income_band     = %s,
-               score_band      = %s,
-               risk_tier       = %s,
-               pipeline_ts     = NOW()
-         WHERE customer_id     = %s
-    """, [(r[1], r[2], r[3], r[4], r[0]) for r in tuples])
-    updated += len(tuples)
-    if start % 25_000 == 0:
-        print(f"  {updated:,}/{len(silver_pd):,} rows synced...")
+UPDATE_SQL = """
+    UPDATE credit_features
+       SET debt_to_income  = %s,
+           income_band     = %s,
+           score_band      = %s,
+           risk_tier       = %s,
+           pipeline_ts     = NOW()
+     WHERE customer_id     = %s
+"""
+params = [(r[1], r[2], r[3], r[4], r[0]) for r in silver_pd.itertuples(index=False, name=None)]
 
+t0 = time.perf_counter()
+psycopg2.extras.execute_batch(cur, UPDATE_SQL, params, page_size=5_000)
 conn.commit()
+updated = len(params)
 cur.close()
 conn.close()
 
@@ -210,12 +206,43 @@ print(f"\nLakebase sync: {updated:,} rows in {time.perf_counter() - t0:.1f}s")
 
 # COMMAND ----------
 
-# Note: UC JDBC table creation requires UC Federation (CREATE CONNECTION + CREATE FOREIGN CATALOG).
-# In this demo, Lakebase tables appear in UC natively via the Catalog Explorer.
-# The JDBC view approach is not supported by this workspace's UC configuration.
-# For production: use CREATE CONNECTION to register the Lakebase PostgreSQL endpoint in UC.
-print("UC federation view: available via Catalog Explorer → Lakebase instance")
-print(f"Access Lakebase data directly: psycopg2 to {LB_HOST} or Catalog Explorer UI")
+# Read from Lakebase via Spark JDBC and register as a Delta table in UC.
+# This gives risk analysts a governed SQL entry point with full UC lineage:
+#   SELECT * FROM {CATALOG}.{SCHEMA}.feature_store_live
+# The table is refreshed on every pipeline run, keeping it in sync with the serving layer.
+jdbc_url = f"jdbc:postgresql://{LB_HOST}/{LB_DB}?ssl=true&sslmode=require"
+
+# Get a fresh credential — same flow used by util_lakebase_auth (SDK path preferred)
+try:
+    from databricks.sdk import WorkspaceClient
+    _ep = dbutils.secrets.get("lakebase-demo", "endpoint_path")
+    _lb_token = WorkspaceClient().postgres.generate_database_credential(endpoint=_ep).token
+except Exception:
+    _lb_token = LB_PASS  # widget fallback for interactive runs
+
+df_live = (
+    spark.read
+    .format("jdbc")
+    .option("url", jdbc_url)
+    .option("dbtable", "credit_features")
+    .option("user", LB_USER)
+    .option("password", _lb_token)
+    .option("driver", "org.postgresql.Driver")
+    .option("fetchsize", "10000")
+    .load()
+)
+
+print(f"Read {df_live.count():,} rows from Lakebase")
+
+(df_live
+    .write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(f"{CATALOG}.{SCHEMA}.feature_store_live"))
+
+print(f"feature_store_live registered: {CATALOG}.{SCHEMA}.feature_store_live")
+print(f"Run: SELECT * FROM {CATALOG}.{SCHEMA}.feature_store_live LIMIT 10")
 
 # COMMAND ----------
 # MAGIC %md ## 4. Validate parity Delta ↔ Lakebase

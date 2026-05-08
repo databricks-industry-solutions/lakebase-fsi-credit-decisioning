@@ -82,7 +82,8 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 | **5 notebooks** | End-to-end pipeline from data generation to audit log |
 | **Databricks App** | Interactive credit decisioning UI (two personas: Analyst + Risk Officer) |
 | **Benchmark notebook** | Automated p50/p95/p99 latency measurement at 1–500 concurrent requests |
-| **Architecture diagrams** | draw.io source + PNG exports |
+| **`feature_store_live` Delta table** | UC-registered snapshot of Lakebase features — queryable via SQL with full lineage |
+| **Architecture diagrams** | PNG exports (reference architecture, data model, auth flow) |
 | **Auth utilities** | Service Principal M2M OAuth helper for automated pipelines |
 
 ## Requirements
@@ -100,7 +101,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/fabricio-hamada_data/lakebase-fsi-credit-decisioning.git
+git clone https://github.com/databricks-industry-solutions/lakebase-fsi-credit-decisioning.git
 cd lakebase-fsi-credit-decisioning
 ```
 
@@ -242,7 +243,7 @@ Then run in a notebook (or via the SQL Statement Execution API):
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
-GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
+GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
 ```
 
 And via psycopg2 (connect to Lakebase with admin credential):

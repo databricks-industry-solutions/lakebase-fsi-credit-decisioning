@@ -53,7 +53,7 @@ for name, val in [("uc_catalog", CATALOG), ("uc_schema", SCHEMA)]:
 
 import json
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import Task, NotebookTask, JobSettings
+from databricks.sdk.service.jobs import Task, NotebookTask, JobSettings, TaskDependency
 
 w = WorkspaceClient()
 
@@ -88,7 +88,7 @@ for nb in notebooks:
             notebook_path=f"{WS_PATH}/{nb}",
             base_parameters=base_params,
         ),
-        depends_on=[{"task_key": tasks[-1].task_key}] if tasks else [],
+        depends_on=[TaskDependency(task_key=tasks[-1].task_key)] if tasks else [],
     )
     tasks.append(task)
 

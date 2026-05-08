@@ -121,7 +121,8 @@ REASON_CODES = {
     "debt_to_income":   (lambda v: v > 0.50, "RC05"),
 }
 
-n_rows = 100_000
+dbutils.widgets.text("n_rows", "100000", "Dataset size (rows)")
+n_rows = int(dbutils.widgets.get("n_rows"))
 conn = get_conn()
 cur = conn.cursor()
 
@@ -373,5 +374,4 @@ display(
 # MAGIC
 # MAGIC **Next steps:**
 # MAGIC - Run `06_credit_app/` for the interactive UI demo (Databricks App)
-# MAGIC - Record the full pipeline with `/sa-demo-record` → `demo.yaml`
-# MAGIC - Generate pitch script with `--mode script`, record narration with `--mode narrator`
+# MAGIC - Use the App's Technical Analyst and Risk Officer views to walk through the decision flow

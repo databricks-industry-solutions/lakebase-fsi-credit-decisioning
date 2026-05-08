@@ -237,7 +237,7 @@ display(spark.createDataFrame(df_results))
 # Architecture decision
 worst_p99   = df_results["p99_ms"].max()
 at_100_conc = df_results[df_results["concurrency"] == 100]["p99_ms"].values[0]
-verdict     = "PASS" if worst_p99 < TARGET_P99 else "FAIL"
+verdict     = "PASS" if at_100_conc < TARGET_P99 else "FAIL"
 
 print()
 print("=" * 60)

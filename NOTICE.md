@@ -1,5 +1,5 @@
 Databricks Solution Accelerator: Real-time Credit Decisioning with Lakebase
-Copyright (2025) Databricks, Inc.
+Copyright (2026) Databricks, Inc.
 
 This product includes software developed at Databricks, Inc. (https://www.databricks.com/).
 

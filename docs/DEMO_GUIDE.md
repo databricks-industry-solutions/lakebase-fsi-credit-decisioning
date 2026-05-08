@@ -1,6 +1,6 @@
-# Pitch Guide — Architecture Walkthrough
-# Recording: Google Meet, screen share on architecture/reference.png
-# Duration: ~4 minutes
+# Demo Guide — Architecture Walkthrough
+
+This guide gives you a ~4-minute talk track to walk a customer through the architecture diagram. Open `architecture/reference-v2.drawio.png` and follow the segments below.
 
 ## Setup
 - Open `architecture/reference-v2.drawio.png` fullscreen (Preview → View → Best Fit)

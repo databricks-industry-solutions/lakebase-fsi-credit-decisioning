@@ -4,7 +4,7 @@ Best practice for Solution Accelerators: never use user tokens or PATs for autom
 pipelines. Service Principals with OAuth M2M client credentials flow are the standard.
 
 Usage (in notebooks):
-    import sys; sys.path.insert(0, '/Workspace/Shared/lakebase-demo-sa/scripts')
+    import sys; sys.path.insert(0, '/Workspace/Shared/lakebase-fsi-credit-decisioning/scripts')
     from sp_auth import get_lakebase_token
     token = get_lakebase_token()
 

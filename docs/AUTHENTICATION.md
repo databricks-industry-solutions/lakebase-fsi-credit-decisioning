@@ -65,7 +65,7 @@ For workspace admins onboarding a new team member:
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<user-email>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<user-email>`;
-GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<user-email>`;
+GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<user-email>`;
 ```
 
 **Lakebase postgres role (run via psycopg2 or notebook 00):**
@@ -96,7 +96,7 @@ When deploying the App for the first time, the App's service principal needs:
 GRANT USE CATALOG ON CATALOG <your_catalog> TO `<sp-client-id-uuid>`;
 GRANT USE SCHEMA ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
 GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id-uuid>`;
-GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id-uuid>`;
+GRANT EXECUTE ON MODEL <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id-uuid>`;
 ```
 
 **2. Lakebase postgres role** for the SP:
