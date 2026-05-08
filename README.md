@@ -2,7 +2,7 @@
 
 **Databricks Solution Accelerator — FSI / Credit Risk**
 
-Train, serve, and audit credit decisions on a single platform. No Redis. No Cassandra. No SAS.
+Train, serve, and audit credit decisions on a single platform. No Redis. No Cassandra. No SAS. No separate feature store infrastructure.
 
 ## Business Overview
 
@@ -19,7 +19,7 @@ Credit decisioning today requires **three separate systems**:
 | System | Responsibility | Pain |
 |---|---|---|
 | Databricks / SAS | Model training | Separate from serving |
-| Redis / Cassandra / Feast | Feature store (real-time serving) | Extra infra, no lineage |
+| Redis / Cassandra / Feast | Feature store (real-time serving) | Extra infra, no lineage — eliminated by Lakebase |
 | Model serving layer | Inference | Another hop, latency budget |
 
 Every decision crosses system boundaries. Lineage is reconstructed, not native.
@@ -284,6 +284,8 @@ Reference results (AWS us-east-1, Serverless Lakebase, 100K rows, full decision 
 **SLA gate: p99 < 50ms at 100 concurrent — PASS**
 
 Full decision loop includes: Lakebase feature lookup + limit check + LightGBM inference + reason codes.
+
+> **Note:** End-to-end latency benchmark uses mock bureau and KYC APIs. Production latency will vary based on external API RTT (real bureau calls typically add 80–300ms).
 
 Run notebook 04 to measure results in your own environment.
 
