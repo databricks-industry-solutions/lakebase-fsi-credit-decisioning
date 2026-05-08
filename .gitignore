@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Secrets / environment
+.env
+.env.*
+*.secret
+
+# macOS
+.DS_Store
+
+# Build artifacts
+*.mp4
+*.webm
+*.gif
+evidence/
+*.aux
+*.log
+*.pdf
+texput.log
+
+# Local development overrides
+app.yaml.local

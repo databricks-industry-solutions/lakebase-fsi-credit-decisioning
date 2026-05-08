@@ -1,0 +1,65 @@
+body { margin: 0; padding: 0; background-color: #0F1623; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.live-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  background-color: #00C851;
+  border-radius: 50%;
+  animation: pulse 1.6s ease-in-out infinite;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.decision-result { animation: slideIn 0.3s ease-out; }
+
+@keyframes bannerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.decision-banner { animation: bannerIn 0.25s ease-out; }
+
+.db-card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.db-card:hover {
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35);
+}
+
+.persona-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+}
+.persona-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5);
+}
+.persona-card-tech:hover  { border-color: #FF3621 !important; }
+.persona-card-exec:hover  { border-color: #00C851 !important; }
+
+.scenario-btn {
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.scenario-btn:hover { transform: scale(1.03); }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0F1623; }
+::-webkit-scrollbar-thumb { background: #253047; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2A3651; }
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+.audit-row:nth-child(even) td { background-color: rgba(255,255,255,0.015); }
+.audit-row:hover td { background-color: rgba(255,255,255,0.04); }
+
+.kpi-card { transition: box-shadow 0.2s ease; }
+.kpi-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }

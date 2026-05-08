@@ -1,0 +1,64 @@
+command: ["python", "app.py"]
+
+# ── Environment variables ──────────────────────────────────────────────────────
+# Replace ALL <placeholder> values with your own before deploying.
+# DATABRICKS_HOST is injected automatically by the Apps runtime — no need to set it.
+env:
+  # Lakebase PostgreSQL endpoint
+  # Get this from: Catalog Explorer → Lakebase → your instance → Host
+  - name: LAKEBASE_HOST
+    value: "<your-lakebase-endpoint>.database.<region>.cloud.databricks.com"
+
+  # Your Databricks email address (interactive users) or SP client_id (jobs)
+  - name: LAKEBASE_USER
+    value: "<your-email@company.com>"
+
+  # Do not change these unless your workspace uses non-default values
+  - name: LAKEBASE_DB
+    value: "databricks_postgres"
+  - name: LAKEBASE_PORT
+    value: "5432"
+
+  # Unity Catalog — must match the catalog used in notebooks 01-05
+  - name: UC_CATALOG
+    value: "<your-uc-catalog>"
+  - name: UC_SCHEMA
+    value: "lakebase_credit_demo"
+
+  # MLflow model name — must match notebook 02
+  - name: MODEL_NAME
+    value: "credit_scoring_v1"
+
+  # Must match the n_rows used when running notebook 01
+  - name: N_ROWS
+    value: "100000"
+
+  # Lakebase endpoint path for credential exchange.
+  # Get this from: Catalog Explorer → Lakebase → your instance → copy the endpoint path.
+  # Format: projects/<project-name>/branches/<branch>/endpoints/primary
+  - name: LAKEBASE_ENDPOINT_PATH
+    value: "<your-lakebase-endpoint-path>"
+
+# ── Secrets ────────────────────────────────────────────────────────────────────
+# Create a secret scope named 'lakebase-demo' with the keys below.
+# CLI:
+#   databricks secrets create-scope lakebase-demo
+#   databricks secrets put-secret lakebase-demo sp_client_id --string-value <SP_CLIENT_ID>
+#   databricks secrets put-secret lakebase-demo sp_client_secret --string-value <SP_SECRET>
+#
+# The App uses these for SP M2M auth fallback. If running interactively
+# (browser session), the X-Forwarded-Access-Token header is used instead
+# and no secrets are required.
+resources:
+  - name: lakebase-sp-cid
+    description: "Service Principal client ID for Lakebase M2M auth"
+    secret:
+      scope: lakebase-demo
+      key: sp_client_id
+      env_variable: LAKEBASE_SP_CLIENT_ID
+  - name: lakebase-sp-csec
+    description: "Service Principal client secret for Lakebase M2M auth"
+    secret:
+      scope: lakebase-demo
+      key: sp_client_secret
+      env_variable: LAKEBASE_SP_CLIENT_SECRET
