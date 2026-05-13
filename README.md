@@ -65,11 +65,11 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 
 ### Technical Analyst — APPROVE
 ![APPROVE decision](docs/screenshots/app_technical_approve.png)
-*Customer #62850 (PREMIUM tier): model score 100%, no adverse factors. Full decision pipeline trace shows Lakebase lookup (4.2ms), KYC/AML gate, bureau enrichment (44.3ms), and LightGBM inference (<1ms). Feature vector served directly from Lakebase.*
+*Customer #62850 — Tier: PREMIUM, KYC: PASS. Score 0.849 vs cutoff 0.500, no adverse reason codes. Feature vector grouped by 5 Cs of Credit. Pipeline trace, model version, and MRM status shown on the decision screen.*
 
 ### Technical Analyst — DECLINE with KYC Flag
 ![KYC DECLINE decision](docs/screenshots/app_technical_kyc.png)
-*Customer #941 (STANDARD tier): score 99% DECLINE with RC04 (derogatory marks), RC05 (debt-to-income), and RC07 (KYC flag). All reason codes traceable to the feature vector stored in Lakebase.*
+*Customer #941 — KYC: FAIL. Score 0.668 clears the model cutoff, but three derogatory marks block the KYC check. Chips labeled inline. All reason codes traceable to the Lakebase feature vector.*
 
 ### Risk Officer Dashboard
 ![Risk Officer dashboard](docs/screenshots/app_risk_officer.png)
@@ -305,8 +305,9 @@ SELECT * FROM <catalog>.lakebase_credit_demo.feature_store_live LIMIT 10
 
 The App ships with two views:
 
-- **Technical Analyst** — customer lookup by ID, feature vector from Lakebase, decision pipeline trace, model explainability
-- **Risk Officer** — portfolio KPIs, approval rate trend, score distribution, live decision feed, manual review queue
+**Technical Analyst** — customer lookup by ID, feature vector grouped by 5 Cs of Credit (Character / Capacity / Capital / Conditions / Profile), decision pipeline trace, labeled tier and KYC chips, model score vs cutoff, model governance panel (version, alias, MRM status), and feature contribution chart.
+
+**Risk Officer** — portfolio KPIs, approval rate trend with automatic anomaly callout, score distribution in estimated FICO bands (300–850), clickable Decision Mix donut (drills into top reason codes per segment), live decision feed, and manual review queue.
 
 Demo scenarios are pre-loaded in the sidebar for quick demos.
 
