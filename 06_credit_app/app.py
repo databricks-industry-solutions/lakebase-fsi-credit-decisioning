@@ -94,6 +94,27 @@ REASON_CODES = {
     "debt_to_income":   (lambda v: v > 0.50, "RC05 — Debt-to-income above 50%"),
 }
 
+# 5 Cs of Credit — feature groupings for the Technical Analyst view
+_5C_GROUPS = [
+    ("Character",  ["payment_history", "derogatory_marks"]),
+    ("Capacity",   ["income_monthly", "months_employed", "debt_to_income"]),
+    ("Capital",    ["total_debt", "open_accounts"]),
+    ("Conditions", ["credit_score", "utilization"]),
+    ("Profile",    ["age"]),
+]
+_5C_FORMAT = {
+    "age":              lambda v: f"{int(v)} yrs",
+    "income_monthly":   lambda v: f"${v:,.0f}",
+    "credit_score":     lambda v: f"{int(v)}",
+    "open_accounts":    lambda v: f"{int(v)}",
+    "total_debt":       lambda v: f"${v:,.0f}",
+    "payment_history":  lambda v: f"{v*100:.1f}%",
+    "utilization":      lambda v: f"{v*100:.1f}%",
+    "months_employed":  lambda v: f"{int(v)} mo",
+    "derogatory_marks": lambda v: f"{int(v)}",
+    "debt_to_income":   lambda v: f"{v*100:.1f}%",
+}
+
 
 # ── Mock external APIs ────────────────────────────────────────────────────────
 def mock_bureau_call(customer_id: int, internal_credit_score: float) -> dict:
@@ -272,7 +293,7 @@ _model_lock = __import__("threading").Lock()
 
 def _load_model_if_needed() -> None:
     """Lazy model load on first request using available token (user or SP)."""
-    global _model, _feature_importances
+    global _model, _feature_importances, _model_version
     if _model is not None:
         return
     token = _user_bearer or os.getenv("DATABRICKS_TOKEN", "")
@@ -294,12 +315,19 @@ def _load_model_if_needed() -> None:
                 FEATURES[i]: round(float(raw[i]) / total, 4)
                 for i in range(len(FEATURES))
             }
+            try:
+                _v = mlflow.MlflowClient().get_model_version_by_alias(
+                    f"{CATALOG}.{SCHEMA}.{MODEL_NM}", "champion")
+                _model_version = str(_v.version)
+            except Exception:
+                pass
             print(f"Model loaded lazily ({len(_feature_importances)} features)")
         except Exception as e:
             os.environ["DATABRICKS_TOKEN"] = old if 'old' in dir() else ""
             print(f"WARN model lazy load: {e}")
 
 _feature_importances: dict[str, float] = {}
+_model_version: str = "—"
 
 # Try eager load at startup (works if SP has EXECUTE ON FUNCTION for the model)
 try:
@@ -308,6 +336,12 @@ try:
     raw = _model.feature_importance(importance_type="gain")
     total = float(raw.sum()) or 1.0
     _feature_importances = {FEATURES[i]: round(float(raw[i]) / total, 4) for i in range(len(FEATURES))}
+    try:
+        _v = mlflow.MlflowClient().get_model_version_by_alias(
+            f"{CATALOG}.{SCHEMA}.{MODEL_NM}", "champion")
+        _model_version = str(_v.version)
+    except Exception:
+        pass
     print("Model loaded at startup.")
 except Exception as e:
     print(f"WARN model startup: {e} — will retry on first user request")
@@ -703,29 +737,36 @@ def _score_gauge_fig(score: float, decision: str):
 def _score_dist_fig(rows: list):
     if len(rows) < 3:
         return None
-    approve_scores = [float(r[2]) for r in rows if r[1] == "APPROVE"]
-    decline_scores = [float(r[2]) for r in rows if r[1] != "APPROVE"]
+    # Approximate FICO from model score: score ∈ [0,1] → FICO_est ∈ [300, 850]
+    # Cutoff 0.500 → FICO ≈ 575
+    to_fico = lambda s: round(300 + float(s) * 550)
+    approve_fico = [to_fico(r[2]) for r in rows if r[1] == "APPROVE"]
+    decline_fico = [to_fico(r[2]) for r in rows if r[1] != "APPROVE"]
     fig = go.Figure()
-    if approve_scores:
+    if approve_fico:
         fig.add_trace(go.Histogram(
-            x=approve_scores, name="APPROVE", nbinsx=12,
+            x=approve_fico, name="APPROVE", nbinsx=12,
             marker_color=_GREEN, opacity=0.65, marker_line_width=0,
         ))
-    if decline_scores:
+    if decline_fico:
         fig.add_trace(go.Histogram(
-            x=decline_scores, name="DECLINE", nbinsx=12,
+            x=decline_fico, name="DECLINE", nbinsx=12,
             marker_color=_RED, opacity=0.65, marker_line_width=0,
         ))
-    fig.add_vline(x=0.5, line_width=2, line_dash="dash", line_color=_MUTED,
-                  annotation_text="threshold", annotation_position="top right",
+    fig.add_vline(x=575, line_width=2, line_dash="dash", line_color=_MUTED,
+                  annotation_text="cutoff ~575", annotation_position="top right",
                   annotation_font={"size": 9, "color": _MUTED})
     fig.update_layout(
         barmode="overlay",
         height=195,
-        margin={"t": 8, "b": 20, "l": 30, "r": 10},
+        margin={"t": 8, "b": 30, "l": 30, "r": 10},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis={"tickfont": {"size": 9, "color": _MUTED}, "gridcolor": _BORDER2,
-               "title": {"text": "score", "font": {"size": 9, "color": _MUTED}}},
+        xaxis={
+            "tickfont": {"size": 9, "color": _MUTED}, "gridcolor": _BORDER2,
+            "range": [300, 850],
+            "tickvals": [300, 400, 500, 575, 650, 750, 850],
+            "title": {"text": "est. FICO (from model score)", "font": {"size": 8, "color": _MUTED}},
+        },
         yaxis={"tickfont": {"size": 9, "color": _MUTED}, "gridcolor": _BORDER2},
         legend={"font": {"size": 10, "color": _MUTED}, "bgcolor": "rgba(0,0,0,0)",
                 "x": 0.02, "y": 0.98},
@@ -851,6 +892,21 @@ def _tier_badge(tier: str):
     return html.Span((tier or "UNKNOWN").upper(), style={
         "display": "inline-block", "padding": "2px 10px", "borderRadius": "20px",
         "fontSize": "11px", "fontWeight": "700", "letterSpacing": "0.4px",
+        "backgroundColor": f"{color}22", "border": f"1px solid {color}55", "color": color,
+    })
+
+
+def _labeled_chip(label: str, value: str, color: str):
+    """Badge with visible label prefix — e.g. 'Tier: PREMIUM', 'KYC: PASS'."""
+    return html.Span([
+        html.Span(f"{label}: ", style={
+            "fontWeight": "500", "fontSize": "9px", "opacity": "0.75", "letterSpacing": "0.3px",
+        }),
+        html.Span(value.upper(), style={"fontWeight": "700"}),
+    ], style={
+        "display": "inline-flex", "alignItems": "center", "gap": "1px",
+        "padding": "2px 9px", "borderRadius": "20px", "fontSize": "11px",
+        "letterSpacing": "0.3px",
         "backgroundColor": f"{color}22", "border": f"1px solid {color}55", "color": color,
     })
 
@@ -1269,8 +1325,13 @@ _EXEC = html.Div(id="page-executive", style={"display": "none"}, children=[
         dbc.Row(style={"marginBottom": "20px"}, children=[
             dbc.Col(width=3, children=[
                 _card(dbc.CardBody(style={"padding": "18px 20px"}, children=[
-                    _section_label("Decision Mix"),
+                    _section_label("Decision Mix",
+                                   right=html.Span("click to drill", style={
+                                       "fontSize": "9px", "color": _MUTED,
+                                       "letterSpacing": "0.4px",
+                                   })),
                     html.Div(id="exec-donut"),
+                    html.Div(id="exec-donut-drilldown", style={"marginTop": "10px"}),
                 ])),
             ]),
             dbc.Col(width=5, children=[
@@ -1314,6 +1375,7 @@ app.layout = html.Div(style=_PAGE, children=[
     dcc.Interval(id="audit-interval", interval=10_000, n_intervals=0),
     dcc.Store(id="result-store"),
     dcc.Store(id="session-stats", data={"total": 0, "approved": 0, "avg_ms": 0}),
+    dcc.Store(id="exec-portfolio-data", data={}),
 ])
 
 
@@ -1422,7 +1484,6 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
 
     d_color   = _GREEN if decision == "APPROVE" else _RED
     lat_color = _GREEN if latency_ms < 20 else _WARN if latency_ms < 50 else _RED
-    confidence = round(abs(score - 0.5) * 200)
 
     contributions = _compute_contributions(feat)
 
@@ -1442,12 +1503,15 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
             html.Div(style={"display": "flex", "alignItems": "center", "gap": "8px"}, children=[
                 html.Span(f"Customer #{cid}", style={"fontSize": "14px", "color": _TEXT,
                                                        "fontWeight": "500"}),
-                _tier_badge(tier),
-                _badge(kyc_status, _GREEN if kyc_status == "PASS" else _RED),
+                _labeled_chip("Tier", tier or "UNKNOWN",
+                               TIER_COLORS.get((tier or "UNKNOWN").upper(), TIER_COLORS["UNKNOWN"])),
+                _labeled_chip("KYC", kyc_status, _GREEN if kyc_status == "PASS" else _RED),
             ]),
-            html.Div(f"Confidence {confidence}%  ·  Lakebase {latency_ms}ms", style={
-                "fontSize": "12px", "color": _MUTED,
-            }),
+            html.Div(
+                f"{MODEL_NM} · v{_model_version} champion  ·  "
+                f"score {score:.3f} vs cutoff 0.500  ·  {latency_ms}ms",
+                style={"fontSize": "12px", "color": _MUTED},
+            ),
         ]),
         html.Div(style={"marginLeft": "auto", "minWidth": "220px"}, children=[
             _credit_bar(available, credit_limit),
@@ -1480,6 +1544,24 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
                 "fontSize": "11px", "color": _RED, "fontWeight": "600",
                 "borderLeft": f"2px solid {_RED}", "paddingLeft": "8px",
             }),
+        ]),
+
+        # Model governance metadata
+        html.Hr(style={"borderColor": _BORDER, "margin": "12px 0 8px 0"}),
+        html.Div("Model Governance", style={
+            "fontSize": "10px", "color": _MUTED, "textTransform": "uppercase",
+            "letterSpacing": "0.8px", "fontWeight": "600", "marginBottom": "6px",
+        }),
+        html.Div([
+            html.Div(
+                f"model: {MODEL_NM} · v{_model_version} · champion",
+                style={"fontSize": "11px", "color": _MUTED, "fontFamily": "monospace",
+                       "marginBottom": "3px"},
+            ),
+            html.Div("features: 9 · algorithm: LightGBM",
+                     style={"fontSize": "11px", "color": _MUTED, "marginBottom": "3px"}),
+            html.Div("MRM status: Active · production",
+                     style={"fontSize": "11px", "color": _GREEN}),
         ]),
     ]))
 
@@ -1568,33 +1650,52 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         ]),
     ]))
 
-    # ── Feature vector card ────────────────────────────────────────────────────
-    feat_rows = [
-        ("Age", f"{int(feat.get('age', 0))} yrs"),
-        ("Monthly Income", f"${feat.get('income_monthly', 0):,.0f}"),
-        ("Credit Score", f"{int(feat.get('credit_score', 0))}"),
-        ("Utilization", f"{feat.get('utilization', 0)*100:.1f}%"),
-        ("Payment History", f"{feat.get('payment_history', 0)*100:.1f}%"),
-        ("Open Accounts", f"{int(feat.get('open_accounts', 0))}"),
-        ("Total Debt", f"${feat.get('total_debt', 0):,.0f}"),
-        ("Debt / Income", f"{feat.get('debt_to_income', 0)*100:.1f}%"),
-        ("Employment", f"{int(feat.get('months_employed', 0))} mo"),
-        ("Derog. Marks", f"{int(feat.get('derogatory_marks', 0))}"),
-    ]
-    td_k = {"color": _MUTED, "fontSize": "12px", "paddingRight": "14px", "paddingBottom": "6px",
+    # ── Feature vector card — grouped by 5 Cs of Credit ──────────────────────
+    td_k = {"color": _MUTED, "fontSize": "11px", "paddingRight": "12px", "paddingBottom": "5px",
              "whiteSpace": "nowrap"}
-    td_v = {"fontSize": "12px", "fontWeight": "500", "paddingBottom": "6px", "color": _TEXT}
+    td_v = {"fontSize": "12px", "fontWeight": "500", "paddingBottom": "5px", "color": _TEXT}
+    grp_label_style = {
+        "fontSize": "9px", "color": _MUTED, "textTransform": "uppercase",
+        "letterSpacing": "0.9px", "fontWeight": "600",
+        "paddingTop": "8px", "paddingBottom": "4px", "paddingRight": "12px",
+        "borderTop": f"1px solid {_BORDER2}",
+    }
+
+    def _5c_rows(group_features):
+        rows = []
+        for f in group_features:
+            val = feat.get(f, feat.get("debt_to_income", 0) if f == "debt_to_income" else 0)
+            fmt = _5C_FORMAT.get(f, lambda v: str(round(v, 3)))
+            rows.append(html.Tr([
+                html.Td(FEATURE_LABELS.get(f, f), style=td_k),
+                html.Td(fmt(float(val)), style=td_v),
+            ]))
+        return rows
+
+    # Build columns: left gets Character + Capacity, right gets Capital + Conditions + Profile
+    left_groups  = _5C_GROUPS[:2]
+    right_groups = _5C_GROUPS[2:]
+
+    def _render_groups(groups):
+        out = []
+        for i, (name, fields) in enumerate(groups):
+            header_style = {**grp_label_style}
+            if i == 0:
+                header_style.pop("borderTop")
+                header_style.pop("paddingTop")
+            out.append(html.Tr([html.Td(name, colSpan=2, style=header_style)]))
+            out.extend(_5c_rows(fields))
+        return out
 
     vector_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
-        _section_label("Feature Vector — Lakebase"),
+        _section_label("Feature Vector — Lakebase",
+                       right=html.Span("5 Cs of Credit", style={"fontSize": "10px", "color": _MUTED})),
         dbc.Row([
             dbc.Col(width=6, children=[
-                html.Table([html.Tr([html.Td(k, style=td_k), html.Td(v, style=td_v)])
-                            for k, v in feat_rows[:5]]),
+                html.Table(_render_groups(left_groups), style={"width": "100%"}),
             ]),
             dbc.Col(width=6, children=[
-                html.Table([html.Tr([html.Td(k, style=td_k), html.Td(v, style=td_v)])
-                            for k, v in feat_rows[5:]]),
+                html.Table(_render_groups(right_groups), style={"width": "100%"}),
             ]),
         ]),
     ]))
@@ -1635,24 +1736,25 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
 
 
 @app.callback(
-    Output("exec-kpi-total",      "children"),
-    Output("exec-kpi-approval",   "children"),
-    Output("exec-kpi-kyc",        "children"),
-    Output("exec-kpi-latency",    "children"),
-    Output("exec-kpi-portfolio",  "children"),
-    Output("exec-tier-chart",     "children"),
-    Output("exec-reasons-chart",  "children"),
-    Output("exec-donut",          "children"),
-    Output("exec-trend",          "children"),
-    Output("exec-score-dist",     "children"),
-    Output("exec-feed",           "children"),
-    Output("exec-review-queue",   "children"),
+    Output("exec-kpi-total",       "children"),
+    Output("exec-kpi-approval",    "children"),
+    Output("exec-kpi-kyc",         "children"),
+    Output("exec-kpi-latency",     "children"),
+    Output("exec-kpi-portfolio",   "children"),
+    Output("exec-tier-chart",      "children"),
+    Output("exec-reasons-chart",   "children"),
+    Output("exec-donut",           "children"),
+    Output("exec-trend",           "children"),
+    Output("exec-score-dist",      "children"),
+    Output("exec-feed",            "children"),
+    Output("exec-review-queue",    "children"),
+    Output("exec-portfolio-data",  "data"),
     Input("audit-interval", "n_intervals"),
     Input("_location", "pathname"),
 )
 def refresh_executive(_, pathname):
     if pathname != "/executive":
-        return [dash.no_update] * 12
+        return [dash.no_update] * 13
 
     stats     = query_executive_stats()
     portfolio = query_portfolio_stats()
@@ -1735,7 +1837,8 @@ def refresh_executive(_, pathname):
         x=0.5, y=0.5, showarrow=False,
         font={"size": 22, "color": _GREEN, "family": "DM Sans"},
     )
-    donut = dcc.Graph(figure=donut_fig, config={"displayModeBar": False})
+    donut = dcc.Graph(figure=donut_fig, id="exec-donut-graph",
+                      config={"displayModeBar": False})
 
     # Trend
     if len(rows) >= 2:
@@ -1759,6 +1862,18 @@ def refresh_executive(_, pathname):
                    "tickfont": {"size": 9, "color": _MUTED}},
             font={"family": "DM Sans"},
         )
+        # Flag declining trend: drop > 5pp over last 10 decisions
+        if len(rolling) >= 15:
+            delta = rolling[-1] - rolling[-11]
+            if delta < -5:
+                trend_fig.add_annotation(
+                    x=len(rolling), y=min(rolling[-1] + 8, 100),
+                    text=f"⚠ {abs(delta):.0f}pp drop",
+                    showarrow=True, arrowhead=2, arrowcolor=_WARN, arrowwidth=1,
+                    font={"size": 9, "color": _WARN, "family": "DM Sans"},
+                    bgcolor=_CARD, bordercolor=_WARN, borderwidth=1,
+                    borderpad=3,
+                )
         trend = dcc.Graph(figure=trend_fig, config={"displayModeBar": False})
     else:
         trend = html.Div("Run decisions in Technical view to build the trend.",
@@ -1867,9 +1982,14 @@ def refresh_executive(_, pathname):
         rq = html.Div("No borderline cases in queue.",
                       style={"color": _MUTED, "fontSize": "13px", "padding": "12px 0"})
 
+    portfolio_store = {
+        "reason_freq": portfolio["reason_freq"],
+        "n_approve": sum(1 for r in rows if r[1] == "APPROVE"),
+        "n_decline": len(rows) - sum(1 for r in rows if r[1] == "APPROVE"),
+    }
     return (kpi_total, kpi_approval, kpi_kyc, kpi_lat,
             kpi_portfolio, tier_chart, reasons_chart,
-            donut, trend, score_dist, feed, rq)
+            donut, trend, score_dist, feed, rq, portfolio_store)
 
 
 @app.callback(
@@ -1912,6 +2032,52 @@ def refresh_audit_log(_, __):
             ]) for r in rows
         ]),
     ])
+
+
+@app.callback(
+    Output("exec-donut-drilldown", "children"),
+    Input("exec-donut-graph", "clickData"),
+    State("exec-portfolio-data", "data"),
+    prevent_initial_call=True,
+)
+def drilldown_donut(click_data, portfolio_data):
+    if not click_data or not portfolio_data:
+        return dash.no_update
+    segment = click_data["points"][0].get("label", "")
+    reason_freq = portfolio_data.get("reason_freq", [])
+
+    if segment == "APPROVE":
+        n = portfolio_data.get("n_approve", 0)
+        return html.Div([
+            html.Hr(style={"borderColor": _BORDER, "margin": "8px 0"}),
+            html.Div(f"{n} approvals", style={"fontSize": "11px", "color": _GREEN,
+                                               "fontWeight": "600", "marginBottom": "4px"}),
+            html.Div("No adverse reason codes recorded.",
+                     style={"fontSize": "11px", "color": _MUTED}),
+        ])
+
+    if segment == "DECLINE":
+        n = portfolio_data.get("n_decline", 0)
+        top = reason_freq[:4] if reason_freq else []
+        rows = [
+            html.Div(style={
+                "display": "flex", "justifyContent": "space-between",
+                "marginBottom": "4px",
+            }, children=[
+                html.Span(REASON_LABELS.get(r[0], r[0]),
+                          style={"fontSize": "11px", "color": _MUTED}),
+                html.Span(str(r[1]), style={"fontSize": "11px", "color": _WARN,
+                                             "fontWeight": "600"}),
+            ]) for r in top
+        ]
+        return html.Div([
+            html.Hr(style={"borderColor": _BORDER, "margin": "8px 0"}),
+            html.Div(f"{n} declines — top reasons",
+                     style={"fontSize": "11px", "color": _RED,
+                            "fontWeight": "600", "marginBottom": "6px"}),
+            *rows,
+        ])
+    return dash.no_update
 
 
 if __name__ == "__main__":
