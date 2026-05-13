@@ -50,7 +50,14 @@ from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.getOrCreate()
 mlflow.set_registry_uri("databricks-uc")
-mlflow.set_experiment("/Shared/lakebase-fsi-credit-decisioning/credit_scoring")
+
+# Derive experiment path from this notebook's own location so the SA works
+# in any workspace folder without manual edits.
+_nb_dir = "/".join(
+    dbutils.notebook.entry_point.getDbutils().notebook()
+    .getContext().notebookPath().get().rsplit("/", 1)[:-1]
+)
+mlflow.set_experiment(f"{_nb_dir}/credit_scoring")
 
 print("LightGBM:", lgb.__version__)
 print("MLflow:  ", mlflow.__version__)

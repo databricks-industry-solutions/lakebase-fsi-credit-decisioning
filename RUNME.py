@@ -57,7 +57,11 @@ from databricks.sdk.service.jobs import Task, NotebookTask, JobSettings, TaskDep
 
 w = WorkspaceClient()
 
-WS_PATH    = "/Shared/lakebase-fsi-credit-decisioning/notebooks"
+_runme_dir = "/".join(
+    dbutils.notebook.entry_point.getDbutils().notebook()
+    .getContext().notebookPath().get().rsplit("/", 1)[:-1]
+)
+WS_PATH    = f"{_runme_dir}/notebooks"
 MODEL_NAME = "credit_scoring_v1"
 
 base_params = {
