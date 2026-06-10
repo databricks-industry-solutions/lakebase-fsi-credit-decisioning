@@ -23,6 +23,7 @@ PROFILE="${DATABRICKS_PROFILE:-DEFAULT}"
 CATALOG="${UC_CATALOG:-}"
 SCHEMA="${UC_SCHEMA:-lakebase_credit_demo}"
 USER_EMAIL="${LAKEBASE_USER:-}"
+LAKEBASE_HOST="${LAKEBASE_HOST:-}"
 N_ROWS="${N_ROWS:-100000}"
 MODEL_NAME="${MODEL_NAME:-credit_scoring_v1}"
 SECRET_SCOPE="lakebase-demo"
@@ -32,11 +33,12 @@ APP_NAME="lakebase-credit-decisioning"
 # Parse flags
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --profile)  PROFILE="$2";    shift 2 ;;
-        --catalog)  CATALOG="$2";    shift 2 ;;
-        --schema)   SCHEMA="$2";     shift 2 ;;
-        --user)     USER_EMAIL="$2"; shift 2 ;;
-        *)          echo "Unknown flag: $1"; exit 1 ;;
+        --profile)        PROFILE="$2";       shift 2 ;;
+        --catalog)        CATALOG="$2";       shift 2 ;;
+        --schema)         SCHEMA="$2";        shift 2 ;;
+        --user)           USER_EMAIL="$2";    shift 2 ;;
+        --lakebase-host)  LAKEBASE_HOST="$2"; shift 2 ;;
+        *)                echo "Unknown flag: $1"; exit 1 ;;
     esac
 done
 
@@ -74,7 +76,8 @@ echo "  Workspace:    $WS_PATH"
 echo ""
 
 # Verify auth
-if ! $DB auth describe 2>/dev/null | grep -q "host"; then
+AUTH_OUT=$($DB auth describe 2>/dev/null || true)
+if ! echo "$AUTH_OUT" | grep -qi "host"; then
     fail "Profile '$PROFILE' not authenticated. Run:\n  databricks auth login --profile $PROFILE"
 fi
 ok "Authenticated (profile: $PROFILE)"
@@ -86,8 +89,8 @@ $DB workspace mkdirs "$WS_PATH/notebooks" 2>/dev/null || true
 
 for nb in "$REPO_ROOT/notebooks/"*.py; do
     name=$(basename "$nb" .py)
-    $DB workspace import "$nb" "$WS_PATH/notebooks/$name" \
-        --language PYTHON --overwrite
+    $DB workspace import "$WS_PATH/notebooks/$name" \
+        --file "$nb" --language PYTHON --format SOURCE --overwrite
     ok "  $name"
 done
 
@@ -99,6 +102,9 @@ import json
 params = {
     'uc_catalog':     '$CATALOG',
     'uc_schema':      '$SCHEMA',
+    'lakebase_host':  '${LAKEBASE_HOST:-}',
+    'lakebase_port':  '5432',
+    'lakebase_db':    'databricks_postgres',
     'lakebase_user':  '$USER_EMAIL',
     'lakebase_pass':  '',
     'n_rows':         '$N_ROWS',
