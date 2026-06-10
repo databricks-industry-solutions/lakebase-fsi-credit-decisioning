@@ -28,7 +28,7 @@ have one):
 CREATE EXTENSION IF NOT EXISTS databricks_auth;
 
 -- Replace <your-email> with your Databricks email
-SELECT databricks_create_role('<your-email@company.com>', 'end_user');
+SELECT databricks_create_role('<your-email@company.com>', 'user');
 
 GRANT CONNECT ON DATABASE databricks_postgres TO "<your-email@company.com>";
 GRANT USAGE ON SCHEMA public TO "<your-email@company.com>";
@@ -71,7 +71,7 @@ GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 
 **Lakebase postgres role (run via psycopg2 or notebook 00):**
 ```sql
 CREATE EXTENSION IF NOT EXISTS databricks_auth;
-SELECT databricks_create_role('<user-email>', 'end_user');
+SELECT databricks_create_role('<user-email>', 'user');
 GRANT CONNECT ON DATABASE databricks_postgres TO "<user-email>";
 GRANT USAGE ON SCHEMA public TO "<user-email>";
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<user-email>";
@@ -149,7 +149,7 @@ CREATE EXTENSION IF NOT EXISTS databricks_auth;
 
 -- Create your postgres role
 -- Replace <your-email> with your Databricks email address
-SELECT databricks_create_role('<your-email@company.com>', 'end_user');
+SELECT databricks_create_role('<your-email@company.com>', 'user');
 
 -- Grant permissions on the schema
 GRANT CONNECT ON DATABASE databricks_postgres TO "<your-email@company.com>";
