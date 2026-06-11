@@ -32,3 +32,9 @@ mlruns/
 demo_screenshots.yaml
 *.drawio
 .env
+
+# Personal presentation notes — do not commit
+PRESENTATION_GUIDE.md
+PRESENTATION_GUIDE_EN.md
+FAQ_PT.md
+FAQ_EN.md
