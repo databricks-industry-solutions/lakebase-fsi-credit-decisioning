@@ -21,11 +21,11 @@ jobs:
         uses: databricks/setup-cli@main
 
       - name: Validate bundle
+        if: env.DATABRICKS_HOST != ''
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: databricks bundle validate
-        continue-on-error: true
 
       - name: Check for secrets in code
         run: |
