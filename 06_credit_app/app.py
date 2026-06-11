@@ -37,7 +37,7 @@ MODEL_NM          = os.environ.get("MODEL_NAME", "credit_scoring_v1")
 N_ROWS            = int(os.environ.get("N_ROWS", "100000"))
 WS_HOST           = os.environ.get("DATABRICKS_HOST", "")
 LB_ENDPOINT_PATH  = os.environ.get("LAKEBASE_ENDPOINT_PATH", "")
-BUREAU_PROVIDER   = os.environ.get("BUREAU_PROVIDER",   "Prism Data")
+BUREAU_PROVIDER   = os.environ.get("BUREAU_PROVIDER",   "Experian")
 CASHFLOW_PROVIDER = os.environ.get("CASHFLOW_PROVIDER", "Prism Data")
 
 # ── Color palette ─────────────────────────────────────────────────────────────
