@@ -1,12 +1,20 @@
-# Real-time Credit Decisioning with Lakebase
+# Real-time FSI Decisioning with Lakebase
 
-**Databricks Solution Accelerator — FSI / Credit Risk**
+**Databricks Solution Accelerator — Banking · Insurance · Bancassurance**
 
-Train on Delta, serve real-time features from Lakebase, and audit every decision through Unity Catalog — without separate feature store infrastructure.
+Train on Delta, serve real-time features from Lakebase, run multi-model champion/challenger evaluation, and audit every decision through Unity Catalog — all in one platform, no external infrastructure required.
 
 ## Business Overview
 
-Financial institutions running credit decisioning on fragmented multi-system stacks (separate training environment + external feature store + model serving layer) face broken lineage, multiple on-call teams, and weeks of work to answer a single regulatory audit question. This accelerator demonstrates how Databricks Lakebase collapses all three into one platform: train on Delta, serve features from Lakebase in real-time, log every decision to Delta, and trace the full audit trail through Unity Catalog lineage — without a single external system.
+Banks and insurers running decisioning on fragmented multi-system stacks — separate training environment, external feature store, model serving layer — face broken lineage, multiple on-call rotations, and weeks of work to answer a single regulatory audit question. This accelerator shows how Databricks Lakebase collapses all three into one platform.
+
+Two business segments are covered:
+
+**Banking** — consumer credit decisioning with bureau (FICO), Open Banking cash flow verification, PEP / AML compliance gating, fraud velocity signals, and bancassurance cross-sell propensity scoring. Regulatory framing: SR 26-2, CMN 4.557 / CMN 4.966 (IFRS 9), LGPD Art. 20, FCRA/ECOA, GDPR Art. 22.
+
+**Insurance** — actuarial underwriting with risk class segmentation (Preferred / Standard / Substandard), Open Insurance cross-insurer claims data (OPIN / Circular 635), and rate-up logic for non-standard risks. Regulatory framing: CNSP 321/2015, Solvency II / EIOPA ORSA, EU AI Act Annex III.
+
+Both segments share the same Lakebase feature store, the same audit log, and the same Unity Catalog lineage — one platform for both lines of business.
 
 [![Databricks](https://img.shields.io/badge/Databricks-Lakebase-FF3621)](https://docs.databricks.com/oltp/)
 [![DBR](https://img.shields.io/badge/DBR-15.4_ML_LTS-blue)](https://docs.databricks.com/release-notes/runtime/15.4ml.html)
@@ -79,12 +87,14 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 
 | Component | Description |
 |---|---|
-| **5 notebooks** | End-to-end pipeline from data generation to audit log |
-| **Databricks App** | Interactive credit decisioning UI (two personas: Analyst + Risk Officer) |
-| **Benchmark notebook** | Automated p50/p95/p99 latency measurement at 1–500 concurrent requests |
+| **6 notebooks** | End-to-end pipeline: data generation → multi-model training → feature store → benchmark → audit log |
+| **Databricks App** | Two segments (Banking / Insurance), model selector dropdown (LightGBM / XGBoost / Logistic Reg), cross-sell panel, PEP / fraud velocity / Open Banking enrichment |
+| **Multi-model training** | LightGBM (champion) + XGBoost (challenger) + isotonic-calibrated Logistic Regression (challenger) with AUC, Brier Score, KS Statistic comparison |
+| **Benchmark notebook** | Automated p50/p95/p99 latency at 1–500 concurrent requests |
 | **`feature_store_live` Delta table** | UC-registered snapshot of Lakebase features — queryable via SQL with full lineage |
 | **Architecture diagrams** | PNG exports (reference architecture, data model, auth flow) |
 | **Auth utilities** | Service Principal M2M OAuth helper for automated pipelines |
+| **Documentation** | DEMO_GUIDE (talk tracks), GLOSSARY (score/metric explanations), SEGMENT_GUIDE (banking vs. insurance storylines) |
 
 ## Requirements
 
@@ -92,7 +102,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 |---|---|
 | Databricks workspace with Unity Catalog | All editions |
 | Lakebase instance | Catalog Explorer → Lakebase → Create |
-| DBR 15.4 ML LTS or later | `lightgbm` and `psycopg2-binary` pre-installed |
+| DBR 15.4 ML LTS or later | `lightgbm`, `xgboost`, `scikit-learn`, `psycopg2-binary` pre-installed |
 | UC catalog with USAGE + CREATE privileges | Ask your workspace admin |
 | Databricks CLI (for setup script) | `pip install databricks-cli` |
 
@@ -261,7 +271,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-clie
 |---|---|---|---|
 | 00 | `00_setup_verify` | Verify Lakebase connection + create UC schema | 1 min |
 | 01 | `01_data_generation` | Generate 100K synthetic credit features → Delta + Lakebase | ~5 min |
-| 02 | `02_model_training` | Train LightGBM credit scoring model → MLflow UC registry | ~3 min |
+| 02 | `02_model_training` | Train LightGBM (champion) + XGBoost + isotonic-calibrated Logistic Regression → MLflow UC registry with AUC / Brier Score / KS comparison | ~5 min |
 | 03 | `03_feature_store` | Feature engineering in Spark → sync enriched features to Lakebase → creates `feature_store_live` Delta table in UC | ~2 min |
 | 04 | `04_realtime_serving` | Benchmark p50/p95/p99 at multiple concurrency levels | ~10 min |
 | 05 | `05_decision_log` | Simulate 10K decisions → Delta + Lakebase audit table | ~3 min |
@@ -303,13 +313,20 @@ SELECT * FROM <catalog>.lakebase_credit_demo.feature_store_live LIMIT 10
 
 ## Databricks App
 
-The App ships with two views:
+The App has a **segment selector** (Banking / Insurance) on the landing page and a **model selector** in the sidebar (LightGBM / XGBoost / Logistic Reg).
 
-**Technical Analyst** — customer lookup by ID, feature vector grouped by 5 Cs of Credit (Character / Capacity / Capital / Conditions / Profile), decision pipeline trace, labeled tier and KYC chips, model score vs cutoff, model governance panel (version, alias, MRM status), and feature contribution chart.
+**Banking — Technical Analyst**
+Customer lookup, feature vector grouped by 5 Cs of Credit, decision pipeline trace, labeled tier and KYC chips, PEP status, fraud velocity, Open Banking income verification, model score vs cutoff, model governance panel (version, alias, MRM status), model comparison chart across all three models, and feature contributions.
 
-**Risk Officer** — portfolio KPIs, approval rate trend with automatic anomaly callout, score distribution in estimated FICO bands (300–850), clickable Decision Mix donut (drills into top reason codes per segment), live decision feed, and manual review queue.
+When the decision is APPROVE, a bancassurance cross-sell panel shows propensity scores for Credit Protection, Auto Insurance, and Life Insurance.
 
-Demo scenarios are pre-loaded in the sidebar for quick demos.
+**Insurance — Underwriting Analyst**
+Same customer lookup with actuarial risk score (0–100), risk class (Preferred / Standard / Substandard), Open Insurance data (claims 3yr, policy count, loss ratio), underwriting feature vector grouped by risk profile / financial health / policyholder, and rate-up indicator for Substandard risks.
+
+**Risk Officer**
+Portfolio KPIs, approval rate trend with anomaly callout, score distribution in FICO bands (300–850), clickable Decision Mix donut (drills into top reason codes per segment), live decision feed, and manual review queue.
+
+Demo scenarios are pre-loaded in the sidebar. See `docs/SEGMENT_GUIDE.md` for full talk tracks per segment.
 
 ## Authentication
 
@@ -343,14 +360,14 @@ lakebase-fsi-credit-decisioning/
 │   ├── util_lakebase_auth.py     # Shared auth utility — included via %run
 │   ├── 00_setup_verify.py        # Connection check + schema creation
 │   ├── 01_data_generation.py     # Synthetic features → Delta + Lakebase
-│   ├── 02_model_training.py      # LightGBM → MLflow UC registry
+│   ├── 02_model_training.py      # LightGBM + XGBoost + calibrated LR → MLflow UC registry
 │   ├── 03_feature_store.py       # Silver layer + Lakebase sync
 │   ├── 04_realtime_serving.py    # Benchmark (p50/p95/p99)
 │   └── 05_decision_log.py        # Decisions → Delta + Lakebase audit
 ├── 06_credit_app/
 │   ├── app.py                    # Dash application (Databricks Apps)
 │   ├── app.yaml                  # App config — fill placeholders before deploy
-│   ├── requirements.txt
+│   ├── requirements.txt          # lightgbm, xgboost, scikit-learn, dash, mlflow
 │   └── assets/custom.css
 ├── architecture/
 │   ├── reference-v2.drawio.png   # Solution architecture
@@ -361,7 +378,9 @@ lakebase-fsi-credit-decisioning/
 │   └── sp_auth.py                # SP M2M OAuth helper (reusable)
 └── docs/
     ├── AUTHENTICATION.md         # Auth setup guide
-    └── DEMO_GUIDE.md             # Architecture walkthrough script for demos
+    ├── DEMO_GUIDE.md             # Talk tracks for banking and insurance segments
+    ├── GLOSSARY.md               # Definitions for every score and metric in the app
+    └── SEGMENT_GUIDE.md          # Segment-specific storytelling and regulatory context
 ```
 
 ## License

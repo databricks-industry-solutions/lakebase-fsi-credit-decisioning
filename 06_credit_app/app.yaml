@@ -25,9 +25,15 @@ env:
   - name: UC_SCHEMA
     value: "lakebase_credit_demo"
 
-  # MLflow model name — must match notebook 02
+  # MLflow model names — must match notebook 02
+  # credit_scoring_v1: LightGBM champion (required)
+  # credit_scoring_xgb / credit_scoring_lr: challenger models (optional — app degrades gracefully)
   - name: MODEL_NAME
     value: "credit_scoring_v1"
+  - name: MODEL_XGB_NAME
+    value: "credit_scoring_xgb"
+  - name: MODEL_LR_NAME
+    value: "credit_scoring_lr"
 
   # Must match the n_rows used when running notebook 01
   - name: N_ROWS

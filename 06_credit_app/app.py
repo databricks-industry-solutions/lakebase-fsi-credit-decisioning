@@ -39,6 +39,10 @@ WS_HOST           = os.environ.get("DATABRICKS_HOST", "")
 LB_ENDPOINT_PATH  = os.environ.get("LAKEBASE_ENDPOINT_PATH", "")
 BUREAU_PROVIDER   = os.environ.get("BUREAU_PROVIDER",   "Experian")
 CASHFLOW_PROVIDER = os.environ.get("CASHFLOW_PROVIDER", "Prism Data")
+OPEN_BANKING_PROVIDER  = os.environ.get("OPEN_BANKING_PROVIDER",  "Open Finance")
+OPEN_INS_PROVIDER      = os.environ.get("OPEN_INS_PROVIDER",      "Open Insurance")
+MODEL_XGB_NM           = os.environ.get("MODEL_XGB_NAME",         "credit_scoring_xgb")
+MODEL_LR_NM            = os.environ.get("MODEL_LR_NAME",          "credit_scoring_lr")
 
 # ── Color palette ─────────────────────────────────────────────────────────────
 _RED    = "#FF3621"
@@ -115,6 +119,32 @@ _5C_FORMAT = {
     "debt_to_income":   lambda v: f"{v*100:.1f}%",
 }
 
+# Insurance segment — feature groups and relabeled display names
+_INSURANCE_GROUPS = [
+    ("Risk Profile",     ["derogatory_marks", "payment_history", "credit_score"]),
+    ("Financial Health", ["income_monthly", "total_debt", "utilization"]),
+    ("Policyholder",     ["age", "months_employed", "open_accounts"]),
+]
+INSURANCE_FEATURE_LABELS = {
+    "credit_score":    "Credit Worthiness",
+    "payment_history": "Premium Payment Reliability",
+    "utilization":     "Financial Stress Index",
+    "total_debt":      "Total Financial Exposure",
+    "months_employed": "Employment Stability (mo)",
+    "age":             "Age",
+    "income_monthly":  "Monthly Income",
+    "open_accounts":   "Open Credit Lines",
+    "derogatory_marks":"Adverse Financial Events",
+    "debt_to_income":  "Debt-to-Income",
+}
+INSURANCE_REASON_CODES = {
+    "credit_score":     (lambda v: v < 550,  "RC01 — Credit worthiness below acceptable threshold"),
+    "payment_history":  (lambda v: v < 0.70, "RC02 — Premium payment reliability below 70%"),
+    "utilization":      (lambda v: v > 0.80, "RC03 — Financial stress index exceeds limit"),
+    "derogatory_marks": (lambda v: v >= 2,   "RC04 — Multiple adverse financial events"),
+    "debt_to_income":   (lambda v: v > 0.55, "RC05 — Total financial exposure too high"),
+}
+
 
 # ── Mock external APIs ────────────────────────────────────────────────────────
 def mock_bureau_call(customer_id: int, internal_credit_score: float) -> dict:
@@ -146,6 +176,121 @@ def mock_kyc_check(customer_id: int, derogatory_marks: float, payment_history: f
                 "kyc_latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
     return {"status": "PASS", "flag": None,
             "kyc_latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
+
+
+def mock_pep_check(customer_id: int) -> dict:
+    """PEP (Politically Exposed Person) screening — ~0.4% flagged, deterministic per ID."""
+    t0 = time.perf_counter()
+    time.sleep(random.uniform(0.005, 0.012))
+    is_pep = (customer_id * 7 + 13) % 250 == 0
+    return {
+        "pep_status": "FLAGGED" if is_pep else "CLEAR",
+        "pep_latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+
+def mock_fraud_velocity_check(customer_id: int, open_accounts: float) -> dict:
+    """Fraud velocity: HIGH when too many accounts opened recently (proxy via open_accounts)."""
+    t0 = time.perf_counter()
+    time.sleep(random.uniform(0.006, 0.015))
+    velocity = "HIGH" if open_accounts >= 9 else ("MEDIUM" if open_accounts >= 6 else "LOW")
+    return {
+        "fraud_velocity": velocity,
+        "velocity_latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+
+def mock_open_banking_call(customer_id: int, income_monthly: float, utilization: float) -> dict:
+    """Open Banking income verification — confirms stated income via bank transaction data."""
+    t0 = time.perf_counter()
+    time.sleep(random.uniform(0.028, 0.055))
+    rng = random.Random(customer_id + 33333)
+    # Verified income may differ ±15% from stated
+    verified_income = round(income_monthly * (0.85 + rng.random() * 0.30), 0)
+    # Income confidence: how well the verified figure matches stated
+    confidence = round(max(0.55, 1.0 - abs(verified_income - income_monthly) / max(income_monthly, 1)), 2)
+    return {
+        "verified_income": verified_income,
+        "income_confidence": confidence,
+        "ob_latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+
+def mock_actuarial_call(customer_id: int, age: float, derogatory_marks: float,
+                         payment_history: float) -> dict:
+    """Actuarial risk score (0–100) and risk class for insurance underwriting.
+
+    Score interpretation:
+      72–100 → Preferred  : low risk; standard or discounted premium
+      52–71  → Standard   : average risk; standard premium
+      10–51  → Substandard: elevated risk; rated-up premium (+15–25%) or refer
+    """
+    t0 = time.perf_counter()
+    time.sleep(random.uniform(0.025, 0.045))
+    rng = random.Random(customer_id + 9999)
+    age_factor    = max(0.0, 100.0 - abs(age - 40.0) * 1.8)
+    derogs_factor = max(0.0, 100.0 - derogatory_marks * 22.0)
+    pay_factor    = payment_history * 100.0
+    score = int(age_factor * 0.30 + derogs_factor * 0.40 + pay_factor * 0.30
+                + rng.gauss(0, 2))
+    score = max(10, min(98, score))
+    risk_class = "Preferred" if score >= 72 else ("Standard" if score >= 52 else "Substandard")
+    return {
+        "actuarial_score": score,
+        "risk_class": risk_class,
+        "actuarial_latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+
+def mock_open_insurance_call(customer_id: int, payment_history: float,
+                              credit_score: float) -> dict:
+    """Cross-insurer data via Open Insurance (CLUE/ISO/SUSEP/EIOPA).
+
+    Returned fields:
+      claims_count : number of claims filed at other insurers in last 3 years
+      policy_count : number of active policies across all insurers
+      loss_ratio   : claims paid / premiums collected (historical). >1.0 = unprofitable segment
+    """
+    t0 = time.perf_counter()
+    time.sleep(random.uniform(0.030, 0.055))
+    rng = random.Random(customer_id + 77777)
+    claims     = max(0, round(rng.gauss((1.0 - payment_history) * 3.0, 0.8)))
+    policies   = rng.randint(0, 4)
+    loss_ratio = round(max(0.0, min(3.5,
+                   (1.0 - payment_history) * 2.2 + rng.gauss(0, 0.15))), 2)
+    return {
+        "claims_count": claims,
+        "policy_count": policies,
+        "loss_ratio":   loss_ratio,
+        "open_ins_latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+    }
+
+
+def compute_cross_sell_propensity(customer_id: int, feat: dict, score: float,
+                                   decision: str) -> dict:
+    """Propensity scores (0–1) for insurance cross-sell when credit is approved.
+
+    Products:
+      credit_protection : credit life / payment-protection insurance — highest propensity
+                          for newly approved credit customers (natural bancassurance fit)
+      auto_insurance    : motor insurance — income- and age-dependent
+      life_insurance    : term life / whole life — increases with age and income stability
+    """
+    if decision != "APPROVE":
+        return {}
+    rng    = random.Random(customer_id + 54321)
+    age    = feat.get("age", 35)
+    income = feat.get("income_monthly", 4000)
+    prot   = min(0.95, score * 0.85 + 0.10 + rng.gauss(0, 0.02))
+    auto_f = (1.0 if income > 5000 else 0.65) * (1.0 if 23 <= age <= 58 else 0.70)
+    auto   = min(0.92, score * 0.60 * auto_f + rng.gauss(0, 0.03))
+    vida_f = min(1.0, age / 42.0) * (1.0 if income > 3000 else 0.55)
+    vida   = min(0.88, score * 0.55 * vida_f + rng.gauss(0, 0.03))
+    return {
+        "credit_protection": round(max(0.01, prot), 3),
+        "auto_insurance":    round(max(0.01, auto), 3),
+        "life_insurance":    round(max(0.01, vida), 3),
+    }
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -328,6 +473,9 @@ def _load_model_if_needed() -> None:
 
 _feature_importances: dict[str, float] = {}
 _model_version: str = "—"
+_model_xgb = None      # XGBoost challenger (optional — loaded if registered)
+_model_lr  = None      # Logistic Regression challenger (optional — loaded if registered)
+_model_versions_all: dict[str, str] = {}  # display_name → version string
 
 # Try eager load at startup (works if SP has EXECUTE ON FUNCTION for the model)
 try:
@@ -346,6 +494,35 @@ try:
 except Exception as e:
     print(f"WARN model startup: {e} — will retry on first user request")
 
+# Try loading challenger models (optional — app works with LightGBM only if not available)
+try:
+    mlflow.set_registry_uri("databricks-uc")
+    _model_xgb = mlflow.sklearn.load_model(
+        f"models:/{CATALOG}.{SCHEMA}.{MODEL_XGB_NM}@champion")
+    try:
+        _v = mlflow.MlflowClient().get_model_version_by_alias(
+            f"{CATALOG}.{SCHEMA}.{MODEL_XGB_NM}", "champion")
+        _model_versions_all["XGBoost"] = str(_v.version)
+    except Exception:
+        _model_versions_all["XGBoost"] = "—"
+    print("XGBoost challenger loaded.")
+except Exception as e:
+    print(f"XGBoost challenger not available ({e.__class__.__name__}) — LightGBM fallback")
+
+try:
+    mlflow.set_registry_uri("databricks-uc")
+    _model_lr = mlflow.sklearn.load_model(
+        f"models:/{CATALOG}.{SCHEMA}.{MODEL_LR_NM}@champion")
+    try:
+        _v = mlflow.MlflowClient().get_model_version_by_alias(
+            f"{CATALOG}.{SCHEMA}.{MODEL_LR_NM}", "champion")
+        _model_versions_all["Logistic Reg"] = str(_v.version)
+    except Exception:
+        _model_versions_all["Logistic Reg"] = "—"
+    print("Logistic Reg challenger loaded.")
+except Exception as e:
+    print(f"Logistic Reg challenger not available ({e.__class__.__name__}) — LightGBM fallback")
+
 try:
     _pool = _make_pool()
     _pool_ts = time.time()
@@ -358,6 +535,42 @@ _system_status = {
     # Pool starts as "connecting" if startup failed; first real request will build it
     "db":    "connected" if _pool  is not None else "connecting",
 }
+
+
+def _predict_score(model_name: str, X: pd.DataFrame) -> Optional[float]:
+    """Return probability score for the selected model. Falls back to LightGBM."""
+    if model_name == "XGBoost" and _model_xgb is not None:
+        return float(_model_xgb.predict_proba(X)[0, 1])
+    if model_name == "Logistic Reg" and _model_lr is not None:
+        return float(_model_lr.predict_proba(X)[0, 1])
+    if _model is not None:
+        return float(_model.predict(X)[0])
+    return None
+
+
+def _all_model_scores(X: pd.DataFrame, primary_score: float, seed: int) -> dict:
+    """Scores from all three models for the comparison panel.
+    When a challenger is not loaded, derives a plausible mock score from LightGBM output
+    so the comparison panel is always populated for demo purposes.
+    """
+    rng = random.Random(seed)
+    scores: dict[str, float] = {}
+    scores["LightGBM"] = round(primary_score, 4) if _model is not None else None
+    if _model_xgb is not None:
+        try:
+            scores["XGBoost"] = round(float(_model_xgb.predict_proba(X)[0, 1]), 4)
+        except Exception:
+            scores["XGBoost"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.04))), 4)
+    else:
+        scores["XGBoost"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.04))), 4)
+    if _model_lr is not None:
+        try:
+            scores["Logistic Reg"] = round(float(_model_lr.predict_proba(X)[0, 1]), 4)
+        except Exception:
+            scores["Logistic Reg"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.06))), 4)
+    else:
+        scores["Logistic Reg"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.06))), 4)
+    return scores
 
 
 def _reset_pool():
@@ -500,7 +713,8 @@ def query_decision_history(n: int = 20) -> list:
         return []
 
 
-def run_decision(customer_id: int) -> dict:
+def run_decision(customer_id: int, model_name: str = "LightGBM",
+                 segment: str = "banking") -> dict:
     pool = get_pool()
     t0 = time.perf_counter()
     conn = pool.getconn()
@@ -533,69 +747,135 @@ def run_decision(customer_id: int) -> dict:
     tier         = limit_row[2]        if limit_row else "UNKNOWN"
     limit_block  = available < 100.0
 
-    bureau   = mock_bureau_call(int(customer_id), feat.get("credit_score", 650))
-    cashflow = mock_cashflow_call(int(customer_id), feat.get("income_monthly", 0))
-    kyc      = mock_kyc_check(int(customer_id),
-                               feat.get("derogatory_marks", 0),
-                               feat.get("payment_history", 1.0))
+    kyc = mock_kyc_check(int(customer_id),
+                          feat.get("derogatory_marks", 0),
+                          feat.get("payment_history", 1.0))
+
+    # Segment-specific external enrichment
+    if segment == "insurance":
+        actuarial = mock_actuarial_call(int(customer_id), feat.get("age", 35),
+                                        feat.get("derogatory_marks", 0),
+                                        feat.get("payment_history", 1.0))
+        open_ins  = mock_open_insurance_call(int(customer_id),
+                                              feat.get("payment_history", 1.0),
+                                              feat.get("credit_score", 650))
+        bureau    = {"bureau_score": 0, "bureau_latency_ms": 0}
+        cashflow  = {"cashflow_score": 0, "cashflow_latency_ms": 0}
+        pep       = {"pep_status": "N/A", "pep_latency_ms": 0}
+        fraud_vel = {"fraud_velocity": "N/A", "velocity_latency_ms": 0}
+        open_bank = {"verified_income": 0, "income_confidence": 0, "ob_latency_ms": 0}
+    else:  # banking
+        bureau    = mock_bureau_call(int(customer_id), feat.get("credit_score", 650))
+        cashflow  = mock_cashflow_call(int(customer_id), feat.get("income_monthly", 0))
+        pep       = mock_pep_check(int(customer_id))
+        fraud_vel = mock_fraud_velocity_check(int(customer_id), feat.get("open_accounts", 0))
+        open_bank = mock_open_banking_call(int(customer_id),
+                                            feat.get("income_monthly", 0),
+                                            feat.get("utilization", 0))
+        actuarial = {"actuarial_score": 0, "risk_class": "N/A", "actuarial_latency_ms": 0}
+        open_ins  = {"claims_count": 0, "policy_count": 0,
+                     "loss_ratio": 0, "open_ins_latency_ms": 0}
 
     if _model is None:
         _load_model_if_needed()
     if _model is None:
         return {"error": "Model not loaded — check UC registry"}
 
-    X = pd.DataFrame([{f: feat[f] for f in FEATURES}])
-    score = float(_model.predict(X)[0])
+    X     = pd.DataFrame([{f: feat[f] for f in FEATURES}])
+    score = _predict_score(model_name, X)
+    if score is None:
+        return {"error": "Model not loaded — check UC registry"}
+    score = round(score, 6)
 
+    # Challenger scores for comparison panel
+    challenger_scores = _all_model_scores(X, score, seed=int(customer_id))
+
+    # Decision logic
+    reason_map  = INSURANCE_REASON_CODES if segment == "insurance" else REASON_CODES
+    cutoff      = 0.45 if segment == "insurance" else 0.50
     kyc_blocked = kyc["status"] == "FAIL"
-    decision    = "APPROVE" if (score >= 0.5 and not limit_block and not kyc_blocked) else "DECLINE"
-    reasons     = [msg for field, (check, msg) in REASON_CODES.items()
+    decision    = "APPROVE" if (score >= cutoff and not limit_block and not kyc_blocked) else "DECLINE"
+    reasons     = [msg for field, (check, msg) in reason_map.items()
                    if field in feat and check(feat[field])]
     if limit_block:
         reasons.append("RC06: Insufficient available credit")
     if kyc_blocked and kyc["flag"]:
         reasons.append(kyc["flag"])
 
+    # Insurance rate class (Substandard actuarial → rated-up premium)
+    ins_rate_class = None
+    if segment == "insurance" and decision == "APPROVE":
+        ins_rate_class = ("Rated Up (+20%)" if actuarial["risk_class"] == "Substandard"
+                          else "Standard Rate")
+
+    # Cross-sell propensity — banking only, on approve
+    cross_sell = compute_cross_sell_propensity(int(customer_id), feat, score, decision) \
+        if segment == "banking" else {}
+
     latency = round((time.perf_counter() - t0) * 1000, 1)
 
     try:
         conn2 = pool.getconn()
-        cur2 = conn2.cursor()
+        cur2  = conn2.cursor()
         cur2.execute(
             """INSERT INTO decision_log
                (customer_id, features_snapshot, model_version, score,
                 decision, reason_codes, latency_ms, decision_ts)
                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                ON CONFLICT DO NOTHING""",
-            (customer_id, json.dumps({f: round(feat[f], 4) for f in FEATURES}),
-             "champion", round(score, 6), decision,
+            (customer_id,
+             json.dumps({f: round(feat[f], 4) for f in FEATURES}),
+             f"{model_name}:champion", round(score, 6), decision,
              ",".join(reasons) or None, latency),
         )
         conn2.commit()
         cur2.close()
         pool.putconn(conn2)
     except Exception as _audit_exc:
-        print(f"WARN audit write: {_audit_exc.__class__.__name__}: {_audit_exc}")  # never blocks decision
+        print(f"WARN audit write: {_audit_exc.__class__.__name__}: {_audit_exc}")
 
     return {
-        "customer_id":         customer_id,
-        "score":               round(score, 4),
-        "decision":            decision,
-        "reasons":             reasons,
-        "features":            feat,
-        "latency_ms":          latency,
-        "credit_limit":        round(credit_limit, 2),
-        "available":           round(available, 2),
-        "tier":                tier,
-        "bureau_score":        bureau["bureau_score"],
-        "bureau_latency_ms":   bureau["bureau_latency_ms"],
-        "bureau_provider":     BUREAU_PROVIDER,
-        "cashflow_score":      cashflow["cashflow_score"],
-        "cashflow_latency_ms": cashflow["cashflow_latency_ms"],
-        "cashflow_provider":   CASHFLOW_PROVIDER,
-        "kyc_status":          kyc["status"],
-        "kyc_flag":            kyc["flag"],
-        "kyc_latency_ms":      kyc["kyc_latency_ms"],
+        "customer_id":           customer_id,
+        "score":                 round(score, 4),
+        "decision":              decision,
+        "reasons":               reasons,
+        "features":              feat,
+        "latency_ms":            latency,
+        "credit_limit":          round(credit_limit, 2),
+        "available":             round(available, 2),
+        "tier":                  tier,
+        "model_name":            model_name,
+        "segment":               segment,
+        "challenger_scores":     challenger_scores,
+        # Banking enrichment
+        "bureau_score":          bureau["bureau_score"],
+        "bureau_latency_ms":     bureau["bureau_latency_ms"],
+        "bureau_provider":       BUREAU_PROVIDER,
+        "cashflow_score":        cashflow["cashflow_score"],
+        "cashflow_latency_ms":   cashflow["cashflow_latency_ms"],
+        "cashflow_provider":     CASHFLOW_PROVIDER,
+        "pep_status":            pep["pep_status"],
+        "pep_latency_ms":        pep["pep_latency_ms"],
+        "fraud_velocity":        fraud_vel["fraud_velocity"],
+        "velocity_latency_ms":   fraud_vel["velocity_latency_ms"],
+        "verified_income":       open_bank["verified_income"],
+        "income_confidence":     open_bank["income_confidence"],
+        "ob_latency_ms":         open_bank["ob_latency_ms"],
+        # Insurance enrichment
+        "actuarial_score":       actuarial["actuarial_score"],
+        "risk_class":            actuarial["risk_class"],
+        "actuarial_latency_ms":  actuarial["actuarial_latency_ms"],
+        "ins_claims":            open_ins["claims_count"],
+        "ins_policies":          open_ins["policy_count"],
+        "ins_loss_ratio":        open_ins["loss_ratio"],
+        "open_ins_latency_ms":   open_ins["open_ins_latency_ms"],
+        "ins_rate_class":        ins_rate_class,
+        # Cross-sell (banking + approve)
+        "cross_sell":            cross_sell,
+        # KYC (both segments)
+        "kyc_status":            kyc["status"],
+        "kyc_flag":              kyc["flag"],
+        "kyc_latency_ms":        kyc["kyc_latency_ms"],
     }
 
 
@@ -636,17 +916,18 @@ def _compute_contributions(feat: dict) -> list[tuple[str, float]]:
 
 
 # ── Chart builders ────────────────────────────────────────────────────────────
-def _pipeline_fig(lakebase_ms, kyc_ms, bureau_ms, cashflow_ms, bureau_prov, cashflow_prov):
+def _pipeline_fig(lakebase_ms, kyc_ms, ext1_ms, ext2_ms, ext1_label, ext2_label,
+                  model_name="LightGBM"):
     labels = [
-        "LightGBM inference",
+        f"{model_name} inference",
         "KYC / AML gate",
         "Lakebase lookup",
-        f"{cashflow_prov} — cash flow",
-        f"{bureau_prov} — bureau",
+        ext2_label,
+        ext1_label,
     ]
-    values = [0.5, kyc_ms, lakebase_ms, cashflow_ms, bureau_ms]
+    values = [0.5, kyc_ms, lakebase_ms, ext2_ms, ext1_ms]
     colors = [_GREEN, _GREEN, _GREEN, _WARN, _WARN]
-    texts  = ["<1ms", f"{kyc_ms}ms", f"{lakebase_ms}ms", f"{cashflow_ms}ms", f"{bureau_ms}ms"]
+    texts  = ["<1ms", f"{kyc_ms}ms", f"{lakebase_ms}ms", f"{ext2_ms}ms", f"{ext1_ms}ms"]
 
     fig = go.Figure(go.Bar(
         x=values, y=labels, orientation="h",
@@ -820,6 +1101,68 @@ def _decline_reasons_fig(reason_freq: list):
                "range": [0, max(values) * 1.25]},
         yaxis={"tickfont": {"size": 11, "color": _MUTED},
                "categoryorder": "total ascending"},
+        font={"family": "DM Sans"},
+        showlegend=False,
+    )
+    return fig
+
+
+def _cross_sell_fig(cross_sell: dict):
+    if not cross_sell:
+        return None
+    labels = ["Credit Protection", "Auto Insurance", "Life Insurance"]
+    keys   = ["credit_protection", "auto_insurance", "life_insurance"]
+    values = [cross_sell.get(k, 0) for k in keys]
+    colors = [_GREEN if v >= 0.70 else _BLUE if v >= 0.45 else _MUTED for v in values]
+    texts  = [f"{v*100:.0f}%" for v in values]
+    fig = go.Figure(go.Bar(
+        x=values, y=labels, orientation="h",
+        marker_color=colors, marker_line_width=0,
+        text=texts, textposition="outside",
+        textfont={"size": 12, "color": _TEXT},
+        cliponaxis=False,
+    ))
+    fig.update_layout(
+        height=140,
+        margin={"t": 4, "b": 4, "l": 140, "r": 55},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"showgrid": False, "showticklabels": False, "range": [0, 1.25]},
+        yaxis={"tickfont": {"size": 11, "color": _MUTED}},
+        font={"family": "DM Sans"},
+        showlegend=False,
+    )
+    return fig
+
+
+def _model_comparison_fig(challenger_scores: dict, active_model: str = ""):
+    if not challenger_scores:
+        return None
+    labels = list(challenger_scores.keys())
+    values = [challenger_scores[k] for k in labels]
+    colors = []
+    for label, v in zip(labels, values):
+        if label == active_model:
+            colors.append(_BLUE)
+        else:
+            colors.append(_GREEN if v >= 0.5 else _RED)
+    texts = [f"{v:.3f}" for v in values]
+    fig = go.Figure(go.Bar(
+        x=values, y=labels, orientation="h",
+        marker_color=colors, marker_line_width=0,
+        text=texts, textposition="outside",
+        textfont={"size": 11, "color": _TEXT},
+        cliponaxis=False,
+    ))
+    fig.add_vline(x=0.5, line_width=1, line_dash="dash", line_color=_MUTED,
+                  annotation_text="cutoff 0.500",
+                  annotation_position="top right",
+                  annotation_font={"size": 9, "color": _MUTED})
+    fig.update_layout(
+        height=130,
+        margin={"t": 4, "b": 4, "l": 115, "r": 65},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"showgrid": False, "showticklabels": False, "range": [0, 1.20]},
+        yaxis={"tickfont": {"size": 11, "color": _MUTED}},
         font={"family": "DM Sans"},
         showlegend=False,
     )
@@ -1012,17 +1355,45 @@ def _header():
 
 # ── Landing page ──────────────────────────────────────────────────────────────
 _LANDING = html.Div(id="page-landing", children=[
-    html.Div(style={"padding": "60px 40px 40px", "maxWidth": "900px", "margin": "0 auto"}, children=[
+    html.Div(style={"padding": "60px 40px 40px", "maxWidth": "960px", "margin": "0 auto"}, children=[
 
         # Hero
-        html.Div(style={"textAlign": "center", "marginBottom": "48px"}, children=[
-            html.Div("Real-time Credit Decisioning", style={
+        html.Div(style={"textAlign": "center", "marginBottom": "36px"}, children=[
+            html.Div("Real-time FSI Decisioning", style={
                 "fontSize": "30px", "fontWeight": "700", "color": _LTEXT,
                 "letterSpacing": "-0.8px", "marginBottom": "10px",
             }),
             html.Div("One platform. Train · Store · Serve · Log · Audit.", style={
-                "fontSize": "15px", "color": _MUTED, "marginBottom": "32px",
+                "fontSize": "15px", "color": _MUTED, "marginBottom": "24px",
             }),
+            # Segment selector
+            html.Div(style={"display": "flex", "justifyContent": "center",
+                            "gap": "10px", "marginBottom": "16px"}, children=[
+                html.Div("Segment:", style={"fontSize": "12px", "color": _MUTED,
+                                             "alignSelf": "center"}),
+                html.Button("Banking", id="seg-banking-btn",
+                            n_clicks=0,
+                            style={
+                                "background": f"{_BLUE}33", "border": f"1px solid {_BLUE}",
+                                "color": _BLUE, "borderRadius": "20px",
+                                "padding": "5px 18px", "fontSize": "13px",
+                                "fontWeight": "600", "cursor": "pointer",
+                                "fontFamily": "'DM Sans', sans-serif",
+                            }),
+                html.Button("Insurance", id="seg-insurance-btn",
+                            n_clicks=0,
+                            style={
+                                "background": "transparent",
+                                "border": f"1px solid {_BORDER}",
+                                "color": _MUTED, "borderRadius": "20px",
+                                "padding": "5px 18px", "fontSize": "13px",
+                                "fontWeight": "600", "cursor": "pointer",
+                                "fontFamily": "'DM Sans', sans-serif",
+                            }),
+            ]),
+            html.Div(id="segment-label", style={"fontSize": "12px", "color": _MUTED,
+                                                  "marginBottom": "20px"}),
+        ]),
             # Benchmark bar
             dbc.Row(justify="center", style={"marginBottom": "8px"}, children=[
                 dbc.Col(width="auto", children=[
@@ -1072,27 +1443,18 @@ _LANDING = html.Div(id="page-landing", children=[
             html.Div("@ 100 concurrent · us-east-1 · Databricks Serverless", style={
                 "fontSize": "11px", "color": _MUTED, "marginTop": "6px",
             }),
-        ]),
 
-        # Persona cards
+        # Persona cards (content updates via segment-store callback)
         dbc.Row(justify="center", style={"gap": "0px"}, children=[
             dbc.Col(width=5, children=[
                 html.A(href="/technical", style={"textDecoration": "none"}, children=[
                     _card(dbc.CardBody(style={"padding": "32px 28px"}, children=[
                         html.Div("⬡", style={"fontSize": "32px", "color": _RED, "marginBottom": "14px"}),
-                        html.Div("Technical Analyst", style={
+                        html.Div(id="landing-card1-title", children="Technical Analyst", style={
                             "fontSize": "17px", "fontWeight": "600", "color": _LTEXT,
                             "marginBottom": "10px",
                         }),
-                        html.Div([
-                            html.Div("▸ Customer lookup by ID", style={"fontSize": "13px", "color": _MUTED,
-                                                                         "marginBottom": "5px"}),
-                            html.Div("▸ Feature vector from Lakebase", style={"fontSize": "13px",
-                                                                                "color": _MUTED, "marginBottom": "5px"}),
-                            html.Div("▸ Decision pipeline trace", style={"fontSize": "13px", "color": _MUTED,
-                                                                           "marginBottom": "5px"}),
-                            html.Div("▸ Model explainability", style={"fontSize": "13px", "color": _MUTED}),
-                        ]),
+                        html.Div(id="landing-card1-bullets"),
                         html.Div(style={"marginTop": "20px"}, children=[
                             html.Span("Open →", style={"fontSize": "12px", "color": _RED, "fontWeight": "600"}),
                         ]),
@@ -1105,19 +1467,11 @@ _LANDING = html.Div(id="page-landing", children=[
                 html.A(href="/executive", style={"textDecoration": "none"}, children=[
                     _card(dbc.CardBody(style={"padding": "32px 28px"}, children=[
                         html.Div("◈", style={"fontSize": "32px", "color": _GREEN, "marginBottom": "14px"}),
-                        html.Div("Risk Officer", style={
+                        html.Div(id="landing-card2-title", children="Risk Officer", style={
                             "fontSize": "17px", "fontWeight": "600", "color": _LTEXT,
                             "marginBottom": "10px",
                         }),
-                        html.Div([
-                            html.Div("▸ Portfolio KPIs & approval rate", style={"fontSize": "13px",
-                                                                                  "color": _MUTED, "marginBottom": "5px"}),
-                            html.Div("▸ Score distribution", style={"fontSize": "13px", "color": _MUTED,
-                                                                      "marginBottom": "5px"}),
-                            html.Div("▸ Live decision feed", style={"fontSize": "13px", "color": _MUTED,
-                                                                      "marginBottom": "5px"}),
-                            html.Div("▸ Borderline review queue", style={"fontSize": "13px", "color": _MUTED}),
-                        ]),
+                        html.Div(id="landing-card2-bullets"),
                         html.Div(style={"marginTop": "20px"}, children=[
                             html.Span("Open →", style={"fontSize": "12px", "color": _GREEN, "fontWeight": "600"}),
                         ]),
@@ -1156,6 +1510,25 @@ _LANDING = html.Div(id="page-landing", children=[
 _TECH_SIDEBAR = dbc.Col(width=3, children=[
     _card(dbc.CardBody(style={"padding": "20px"}, children=[
         _section_label("Customer Lookup"),
+
+        # Model selector
+        html.Div("Model", style={"fontSize": "11px", "color": _MUTED,
+                                  "marginBottom": "5px", **_UPPER}),
+        dcc.Dropdown(
+            id="model-selector",
+            options=[
+                {"label": "LightGBM  (champion)",      "value": "LightGBM"},
+                {"label": "XGBoost  (challenger)",     "value": "XGBoost"},
+                {"label": "Logistic Reg  (calibrated)","value": "Logistic Reg"},
+            ],
+            value="LightGBM",
+            clearable=False,
+            style={
+                "backgroundColor": _BORDER2, "color": _LTEXT,
+                "border": f"1px solid {_BORDER}", "borderRadius": "8px",
+                "fontSize": "13px", "marginBottom": "14px",
+            },
+        ),
 
         # ID input
         dcc.Input(
@@ -1376,10 +1749,102 @@ app.layout = html.Div(style=_PAGE, children=[
     dcc.Store(id="result-store"),
     dcc.Store(id="session-stats", data={"total": 0, "approved": 0, "avg_ms": 0}),
     dcc.Store(id="exec-portfolio-data", data={}),
+    dcc.Store(id="segment-store", data="banking"),
+    dcc.Store(id="model-store",   data="LightGBM"),
 ])
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
+
+@app.callback(
+    Output("segment-store",    "data"),
+    Output("segment-label",    "children"),
+    Output("seg-banking-btn",  "style"),
+    Output("seg-insurance-btn","style"),
+    Input("seg-banking-btn",   "n_clicks"),
+    Input("seg-insurance-btn", "n_clicks"),
+    prevent_initial_call=False,
+)
+def update_segment(n_bank, n_ins):
+    _btn_active   = {"background": _BLUE, "border": f"1px solid {_BLUE}",
+                     "color": "#fff", "borderRadius": "20px",
+                     "padding": "5px 18px", "fontSize": "13px",
+                     "fontWeight": "600", "cursor": "pointer",
+                     "fontFamily": "'DM Sans', sans-serif"}
+    _btn_inactive = {"background": "transparent", "border": f"1px solid {_BORDER}",
+                     "color": _MUTED, "borderRadius": "20px",
+                     "padding": "5px 18px", "fontSize": "13px",
+                     "fontWeight": "600", "cursor": "pointer",
+                     "fontFamily": "'DM Sans', sans-serif"}
+    ctx = dash.callback_context
+    triggered = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
+    if "seg-insurance-btn" in triggered:
+        label = "Insurance — actuarial scoring, Open Insurance, underwriting workflow"
+        return "insurance", label, _btn_inactive, _btn_active
+    label = "Banking — bureau, cash flow, KYC, PEP screening, Open Banking"
+    return "banking", label, _btn_active, _btn_inactive
+
+
+@app.callback(
+    Output("model-store", "data"),
+    Input("model-selector", "value"),
+    prevent_initial_call=True,
+)
+def update_model(value):
+    return value or "LightGBM"
+
+
+_LANDING_BULLETS = {
+    "banking": {
+        "card1": ("Credit Analyst",
+                  ["Real-time Lakebase feature lookup",
+                   "Bureau (FICO), cash flow, KYC, PEP, Open Banking",
+                   "LightGBM / XGBoost / Logistic Reg with calibration",
+                   "Adverse reason codes + 5 Cs of Credit"]),
+        "card2": ("Risk Officer",
+                  ["Portfolio KPIs + approval rate trend",
+                   "Score distribution in FICO bands",
+                   "Decision Mix drill-down",
+                   "Live decision feed + anomaly alert"]),
+    },
+    "insurance": {
+        "card1": ("Underwriting Analyst",
+                  ["Actuarial score (Preferred / Standard / Substandard)",
+                   "Open Insurance: claims history, loss ratio",
+                   "Underwriting risk profile by feature group",
+                   "Rate-up flag for Substandard policies"]),
+        "card2": ("Insurance Risk Officer",
+                  ["Portfolio approval rate by risk class",
+                   "Loss ratio trend across cohorts",
+                   "Decline reasons: actuarial vs. model",
+                   "Claims velocity monitoring"]),
+    },
+}
+
+
+@app.callback(
+    Output("landing-card1-title",   "children"),
+    Output("landing-card1-bullets", "children"),
+    Output("landing-card2-title",   "children"),
+    Output("landing-card2-bullets", "children"),
+    Input("segment-store", "data"),
+)
+def update_landing_bullets(segment):
+    seg = segment or "banking"
+    d = _LANDING_BULLETS.get(seg, _LANDING_BULLETS["banking"])
+    t1, b1 = d["card1"]
+    t2, b2 = d["card2"]
+
+    def _bullets(items):
+        return html.Ul([
+            html.Li(item, style={"fontSize": "13px", "color": _MUTED,
+                                 "marginBottom": "4px"})
+            for item in items
+        ], style={"paddingLeft": "18px", "margin": "0"})
+
+    return t1, _bullets(b1), t2, _bullets(b2)
+
+
 @app.callback(
     Output("page-landing",   "style"),
     Output("page-technical", "style"),
@@ -1433,9 +1898,12 @@ def set_customer_id(rnd, quick):
     Input("customer-id-input",   "n_submit"),
     State("customer-id-input",   "value"),
     State("session-stats",       "data"),
+    State("model-store",         "data"),
+    State("segment-store",       "data"),
     prevent_initial_call=True,
 )
-def run_and_display(n_clicks, n_submit, customer_id, stats):
+def run_and_display(n_clicks, n_submit, customer_id, stats,
+                    selected_model, selected_segment):
     if customer_id is None or str(customer_id).strip() == "":
         return dash.no_update, dash.no_update, \
                dbc.Alert("Enter a Customer ID first.", color="warning", className="mt-2"), stats
@@ -1446,8 +1914,11 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         return dash.no_update, dash.no_update, \
                dbc.Alert("Invalid ID — enter a number.", color="danger", className="mt-2"), stats
 
+    seg   = selected_segment or "banking"
+    model = selected_model   or "LightGBM"
+
     try:
-        result = run_decision(cid)
+        result = run_decision(cid, model_name=model, segment=seg)
     except Exception as exc:
         return dash.no_update, dash.no_update, \
                dbc.Alert(f"Connection error: {exc}", color="danger", className="mt-2"), stats
@@ -1464,12 +1935,30 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
     credit_limit      = result["credit_limit"]
     available         = result["available"]
     tier              = result["tier"]
-    bureau_score      = result["bureau_score"]
-    bureau_latency_ms = result["bureau_latency_ms"]
-    bureau_provider   = result["bureau_provider"]
-    cashflow_score    = result["cashflow_score"]
+    challenger_scores = result.get("challenger_scores", {})
+    ins_rate_class    = result.get("ins_rate_class")
+    cross_sell        = result.get("cross_sell", {})
+    # Banking enrichment
+    bureau_score        = result["bureau_score"]
+    bureau_latency_ms   = result["bureau_latency_ms"]
+    bureau_provider     = result["bureau_provider"]
+    cashflow_score      = result["cashflow_score"]
     cashflow_latency_ms = result["cashflow_latency_ms"]
-    cashflow_provider = result["cashflow_provider"]
+    cashflow_provider   = result["cashflow_provider"]
+    pep_status          = result.get("pep_status", "N/A")
+    fraud_velocity      = result.get("fraud_velocity", "N/A")
+    ob_latency_ms       = result.get("ob_latency_ms", 0)
+    verified_income     = result.get("verified_income", 0)
+    income_confidence   = result.get("income_confidence", 0)
+    # Insurance enrichment
+    actuarial_score     = result.get("actuarial_score", 0)
+    risk_class          = result.get("risk_class", "N/A")
+    actuarial_latency   = result.get("actuarial_latency_ms", 0)
+    ins_claims          = result.get("ins_claims", 0)
+    ins_policies        = result.get("ins_policies", 0)
+    ins_loss_ratio      = result.get("ins_loss_ratio", 0)
+    open_ins_latency    = result.get("open_ins_latency_ms", 0)
+    # KYC (both segments)
     kyc_status        = result["kyc_status"]
     kyc_flag          = result["kyc_flag"]
     kyc_latency_ms    = result["kyc_latency_ms"]
@@ -1482,7 +1971,13 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         (stats["avg_ms"] * (stats["total"] - 1) + latency_ms) / stats["total"], 1
     )
 
-    d_color   = _GREEN if decision == "APPROVE" else _RED
+    # Insurance can have a "rated-up" approve (amber) vs standard approve (green)
+    if seg == "insurance" and decision == "APPROVE" and ins_rate_class == "Rated Up (+20%)":
+        d_color = _WARN
+    elif decision == "APPROVE":
+        d_color = _GREEN
+    else:
+        d_color = _RED
     lat_color = _GREEN if latency_ms < 20 else _WARN if latency_ms < 50 else _RED
 
     contributions = _compute_contributions(feat)
@@ -1508,8 +2003,10 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
                 _labeled_chip("KYC", kyc_status, _GREEN if kyc_status == "PASS" else _RED),
             ]),
             html.Div(
-                f"{MODEL_NM} · v{_model_version} champion  ·  "
-                f"score {score:.3f} vs cutoff 0.500  ·  {latency_ms}ms",
+                (f"{MODEL_NM} · v{_model_version} champion  ·  "
+                 f"score {score:.3f} vs cutoff {'0.450' if seg == 'insurance' else '0.500'}  ·  "
+                 f"{latency_ms}ms  ·  {model}"
+                 + (f"  ·  {ins_rate_class}" if ins_rate_class else "")),
                 style={"fontSize": "12px", "color": _MUTED},
             ),
         ]),
@@ -1558,19 +2055,29 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
                 style={"fontSize": "11px", "color": _MUTED, "fontFamily": "monospace",
                        "marginBottom": "3px"},
             ),
-            html.Div("features: 9 · algorithm: LightGBM",
+            html.Div(f"features: 9 · algorithm: {model}",
                      style={"fontSize": "11px", "color": _MUTED, "marginBottom": "3px"}),
-            html.Div("MRM status: Active · production",
+            html.Div(f"segment: {seg.upper()} · MRM status: Active · production",
                      style={"fontSize": "11px", "color": _GREEN}),
         ]),
     ]))
 
     # ── Pipeline waterfall card ────────────────────────────────────────────────
+    if seg == "insurance":
+        ext1_ms, ext2_ms = actuarial_latency, open_ins_latency
+        ext1_lbl = f"{OPEN_INS_PROVIDER} — open insurance"
+        ext2_lbl = "Actuarial score"
+    else:
+        ext1_ms, ext2_ms = bureau_latency_ms, cashflow_latency_ms
+        ext1_lbl = f"{bureau_provider} — bureau"
+        ext2_lbl = f"{cashflow_provider} — cash flow"
+
     pipeline_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
         _section_label("Decision Pipeline"),
         dcc.Graph(
-            figure=_pipeline_fig(latency_ms, kyc_latency_ms, bureau_latency_ms,
-                                 cashflow_latency_ms, bureau_provider, cashflow_provider),
+            figure=_pipeline_fig(latency_ms, kyc_latency_ms,
+                                 ext1_ms, ext2_ms, ext1_lbl, ext2_lbl,
+                                 model_name=model),
             config={"displayModeBar": False},
         ),
         html.Div(style={"display": "flex", "gap": "16px", "marginTop": "8px"}, children=[
@@ -1581,74 +2088,127 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         ]),
     ]))
 
-    # ── External enrichment card ───────────────────────────────────────────────
-    bureau_color   = _GREEN if bureau_score >= 700 else _WARN if bureau_score >= 600 else _RED
-    cashflow_color = _GREEN if cashflow_score >= 60 else _WARN if cashflow_score >= 40 else _RED
+    # ── External enrichment card — segment-aware ──────────────────────────────
+    def _bar(value, lo, hi, color):
+        pct = max(0, min(100, (value - lo) / max(hi - lo, 1) * 100))
+        return html.Div(style={"backgroundColor": _BORDER, "borderRadius": "4px", "height": "5px",
+                                "marginBottom": "3px"}, children=[
+            html.Div(style={"backgroundColor": color, "borderRadius": "4px",
+                             "height": "5px", "width": f"{pct:.0f}%"}),
+        ])
 
-    enrich_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
-        _section_label("External Enrichment"),
-
-        # Bureau
-        html.Div(style={"marginBottom": "16px"}, children=[
-            html.Div(style={"display": "flex", "justifyContent": "space-between",
-                            "alignItems": "flex-end", "marginBottom": "6px"}, children=[
-                html.Div([
-                    html.Div(f"Bureau ({bureau_provider})", style={"fontSize": "10px",
-                                                                     "color": _MUTED, **_UPPER}),
-                    html.Div(f"{bureau_score} FICO", style={"fontSize": "22px", "fontWeight": "700",
-                                                              "color": bureau_color}),
+    if seg == "insurance":
+        act_color = _GREEN if actuarial_score >= 72 else _WARN if actuarial_score >= 52 else _RED
+        lr_color  = _GREEN if ins_loss_ratio <= 0.6 else _WARN if ins_loss_ratio <= 1.0 else _RED
+        rc_color  = _GREEN if risk_class == "Preferred" else _WARN if risk_class == "Standard" else _RED
+        enrich_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+            _section_label("Underwriting Enrichment"),
+            # Actuarial score
+            html.Div(style={"marginBottom": "14px"}, children=[
+                html.Div(style={"display": "flex", "justifyContent": "space-between",
+                                "alignItems": "flex-end", "marginBottom": "5px"}, children=[
+                    html.Div([
+                        html.Div("Actuarial Score", style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
+                        html.Div(f"{actuarial_score}/100", style={"fontSize": "22px", "fontWeight": "700",
+                                                                    "color": act_color}),
+                    ]),
+                    html.Div([
+                        _labeled_chip("Risk Class", risk_class, rc_color),
+                        html.Div(f"{actuarial_latency}ms", style={"fontSize": "11px",
+                                                                    "color": _WARN, "textAlign": "right",
+                                                                    "marginTop": "4px"}),
+                    ]),
                 ]),
-                html.Div([
-                    html.Div("API latency", style={"fontSize": "10px", "color": _MUTED,
-                                                    "textAlign": "right"}),
-                    html.Div(f"{bureau_latency_ms}ms", style={"fontSize": "16px", "fontWeight": "600",
-                                                               "color": _WARN, "textAlign": "right"}),
-                    html.Div(f"vs {latency_ms}ms Lakebase", style={"fontSize": "10px", "color": _MUTED,
-                                                                     "textAlign": "right"}),
-                ]),
-            ]),
-            # FICO bar
-            html.Div(style={"backgroundColor": _BORDER, "borderRadius": "4px", "height": "5px"}, children=[
-                html.Div(style={
-                    "backgroundColor": bureau_color, "borderRadius": "4px", "height": "5px",
-                    "width": f"{(bureau_score - 300) / 550 * 100:.0f}%",
-                }),
-            ]),
-            html.Div(style={"display": "flex", "justifyContent": "space-between",
-                            "marginTop": "3px"}, children=[
-                html.Span("300", style={"fontSize": "9px", "color": _MUTED}),
-                html.Span("FICO range", style={"fontSize": "9px", "color": _MUTED}),
-                html.Span("850", style={"fontSize": "9px", "color": _MUTED}),
-            ]),
-        ]),
-
-        html.Hr(style={"borderColor": _BORDER, "margin": "0 0 14px 0"}),
-
-        # Cashflow
-        html.Div([
-            html.Div(style={"display": "flex", "justifyContent": "space-between",
-                            "alignItems": "flex-end", "marginBottom": "6px"}, children=[
-                html.Div([
-                    html.Div(f"Cash Flow ({cashflow_provider})", style={"fontSize": "10px",
-                                                                          "color": _MUTED, **_UPPER}),
-                    html.Div(f"{cashflow_score}/100", style={"fontSize": "22px", "fontWeight": "700",
-                                                               "color": cashflow_color}),
-                ]),
-                html.Div([
-                    html.Div("API latency", style={"fontSize": "10px", "color": _MUTED,
-                                                    "textAlign": "right"}),
-                    html.Div(f"{cashflow_latency_ms}ms", style={"fontSize": "16px", "fontWeight": "600",
-                                                                  "color": _WARN, "textAlign": "right"}),
+                _bar(actuarial_score, 0, 100, act_color),
+                html.Div(style={"display": "flex", "justifyContent": "space-between"}, children=[
+                    html.Span("Substandard", style={"fontSize": "9px", "color": _MUTED}),
+                    html.Span("Preferred", style={"fontSize": "9px", "color": _MUTED}),
                 ]),
             ]),
-            html.Div(style={"backgroundColor": _BORDER, "borderRadius": "4px", "height": "5px"}, children=[
-                html.Div(style={
-                    "backgroundColor": cashflow_color, "borderRadius": "4px", "height": "5px",
-                    "width": f"{cashflow_score}%",
-                }),
+            html.Hr(style={"borderColor": _BORDER, "margin": "0 0 12px 0"}),
+            # Open Insurance
+            html.Div([
+                html.Div("Open Insurance Data", style={"fontSize": "10px", "color": _MUTED,
+                                                        "marginBottom": "8px", **_UPPER}),
+                html.Div(style={"display": "flex", "gap": "14px", "flexWrap": "wrap"}, children=[
+                    html.Div([
+                        html.Div("Claims (3yr)", style={"fontSize": "9px", "color": _MUTED}),
+                        html.Div(str(ins_claims), style={"fontSize": "18px", "fontWeight": "700",
+                                                          "color": _RED if ins_claims >= 2 else _TEXT}),
+                    ]),
+                    html.Div([
+                        html.Div("Policies", style={"fontSize": "9px", "color": _MUTED}),
+                        html.Div(str(ins_policies), style={"fontSize": "18px", "fontWeight": "700",
+                                                             "color": _TEXT}),
+                    ]),
+                    html.Div([
+                        html.Div("Loss Ratio", style={"fontSize": "9px", "color": _MUTED}),
+                        html.Div(f"{ins_loss_ratio:.2f}", style={"fontSize": "18px", "fontWeight": "700",
+                                                                    "color": lr_color}),
+                    ]),
+                    html.Div(f"{open_ins_latency}ms", style={"fontSize": "11px", "color": _WARN,
+                                                               "alignSelf": "flex-end"}),
+                ]),
             ]),
-        ]),
-    ]))
+        ]))
+    else:  # banking
+        bureau_color   = _GREEN if bureau_score >= 700 else _WARN if bureau_score >= 600 else _RED
+        cashflow_color = _GREEN if cashflow_score >= 60 else _WARN if cashflow_score >= 40 else _RED
+        pep_color      = _RED if pep_status == "FLAGGED" else _GREEN
+        vel_color      = _RED if fraud_velocity == "HIGH" else _WARN if fraud_velocity == "MEDIUM" else _GREEN
+        enrich_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+            _section_label("External Enrichment"),
+            # Bureau
+            html.Div(style={"marginBottom": "12px"}, children=[
+                html.Div(style={"display": "flex", "justifyContent": "space-between",
+                                "alignItems": "flex-end", "marginBottom": "5px"}, children=[
+                    html.Div([
+                        html.Div(f"Bureau ({bureau_provider})",
+                                 style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
+                        html.Div(f"{bureau_score} FICO",
+                                 style={"fontSize": "22px", "fontWeight": "700", "color": bureau_color}),
+                    ]),
+                    html.Div([
+                        html.Div(f"{bureau_latency_ms}ms",
+                                 style={"fontSize": "14px", "fontWeight": "600",
+                                        "color": _WARN, "textAlign": "right"}),
+                        html.Div(f"vs {latency_ms}ms Lakebase",
+                                 style={"fontSize": "10px", "color": _MUTED, "textAlign": "right"}),
+                    ]),
+                ]),
+                _bar(bureau_score, 300, 850, bureau_color),
+                html.Div(style={"display": "flex", "justifyContent": "space-between"}, children=[
+                    html.Span("300", style={"fontSize": "9px", "color": _MUTED}),
+                    html.Span("FICO range", style={"fontSize": "9px", "color": _MUTED}),
+                    html.Span("850", style={"fontSize": "9px", "color": _MUTED}),
+                ]),
+            ]),
+            html.Hr(style={"borderColor": _BORDER, "margin": "0 0 10px 0"}),
+            # Cash Flow
+            html.Div(style={"marginBottom": "10px"}, children=[
+                html.Div(style={"display": "flex", "justifyContent": "space-between",
+                                "alignItems": "flex-end", "marginBottom": "5px"}, children=[
+                    html.Div([
+                        html.Div(f"Cash Flow ({cashflow_provider})",
+                                 style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
+                        html.Div(f"{cashflow_score}/100",
+                                 style={"fontSize": "22px", "fontWeight": "700", "color": cashflow_color}),
+                    ]),
+                    html.Div(f"{cashflow_latency_ms}ms",
+                             style={"fontSize": "14px", "fontWeight": "600",
+                                    "color": _WARN, "textAlign": "right"}),
+                ]),
+                _bar(cashflow_score, 0, 100, cashflow_color),
+            ]),
+            html.Hr(style={"borderColor": _BORDER, "margin": "0 0 10px 0"}),
+            # PEP + Fraud velocity chips
+            html.Div(style={"display": "flex", "gap": "8px", "flexWrap": "wrap"}, children=[
+                _labeled_chip("PEP", pep_status, pep_color),
+                _labeled_chip("Fraud Velocity", fraud_velocity, vel_color),
+                html.Div(f"OB income conf. {income_confidence*100:.0f}%",
+                         style={"fontSize": "10px", "color": _MUTED, "alignSelf": "center"}),
+            ]),
+        ]))
 
     # ── Feature vector card — grouped by 5 Cs of Credit ──────────────────────
     td_k = {"color": _MUTED, "fontSize": "11px", "paddingRight": "12px", "paddingBottom": "5px",
@@ -1661,20 +2221,23 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         "borderTop": f"1px solid {_BORDER2}",
     }
 
+    active_labels = INSURANCE_FEATURE_LABELS if seg == "insurance" else FEATURE_LABELS
+    active_groups = _INSURANCE_GROUPS if seg == "insurance" else _5C_GROUPS
+    vec_subtitle  = "Underwriting Risk Profile" if seg == "insurance" else "5 Cs of Credit"
+
     def _5c_rows(group_features):
         rows = []
         for f in group_features:
             val = feat.get(f, feat.get("debt_to_income", 0) if f == "debt_to_income" else 0)
             fmt = _5C_FORMAT.get(f, lambda v: str(round(v, 3)))
             rows.append(html.Tr([
-                html.Td(FEATURE_LABELS.get(f, f), style=td_k),
+                html.Td(active_labels.get(f, f), style=td_k),
                 html.Td(fmt(float(val)), style=td_v),
             ]))
         return rows
 
-    # Build columns: left gets Character + Capacity, right gets Capital + Conditions + Profile
-    left_groups  = _5C_GROUPS[:2]
-    right_groups = _5C_GROUPS[2:]
+    left_groups  = active_groups[:2]
+    right_groups = active_groups[2:]
 
     def _render_groups(groups):
         out = []
@@ -1689,7 +2252,7 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
 
     vector_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
         _section_label("Feature Vector — Lakebase",
-                       right=html.Span("5 Cs of Credit", style={"fontSize": "10px", "color": _MUTED})),
+                       right=html.Span(vec_subtitle, style={"fontSize": "10px", "color": _MUTED})),
         dbc.Row([
             dbc.Col(width=6, children=[
                 html.Table(_render_groups(left_groups), style={"width": "100%"}),
@@ -1710,6 +2273,31 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
         if contribs else html.Div("Model not loaded.", style={"color": _MUTED, "fontSize": "12px"}),
     ]))
 
+    # ── Model comparison card ──────────────────────────────────────────────────
+    model_comparison_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+        _section_label("Model Comparison", right=html.Span(
+            f"Active: {model}", style={"fontSize": "10px", "color": _MUTED})),
+        dcc.Graph(figure=_model_comparison_fig(challenger_scores, model),
+                  config={"displayModeBar": False}),
+    ]))
+
+    # ── Cross-sell card (banking APPROVE only) ─────────────────────────────────
+    cross_sell = result.get("cross_sell", {})
+    cross_sell_card = None
+    if seg == "banking" and decision == "APPROVE" and cross_sell:
+        cross_sell_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+            _section_label("Cross-sell Opportunities",
+                           right=html.Span("Bancassurance propensity",
+                                           style={"fontSize": "10px", "color": _MUTED})),
+            dcc.Graph(figure=_cross_sell_fig(cross_sell), config={"displayModeBar": False}),
+        ]))
+
+    second_row_right = [
+        dbc.Col(width=8 if not cross_sell_card else 4, children=[contrib_card]),
+    ]
+    if cross_sell_card:
+        second_row_right.append(dbc.Col(width=4, children=[cross_sell_card]))
+
     result_layout = html.Div(className="decision-result", children=[
         banner,
         dbc.Row(style={"marginBottom": "14px"}, children=[
@@ -1717,9 +2305,12 @@ def run_and_display(n_clicks, n_submit, customer_id, stats):
             dbc.Col(width=4, children=[pipeline_card]),
             dbc.Col(width=4, children=[enrich_card]),
         ]),
-        dbc.Row(children=[
+        dbc.Row(style={"marginBottom": "14px"}, children=[
             dbc.Col(width=4, children=[vector_card]),
-            dbc.Col(width=8, children=[contrib_card]),
+            *second_row_right,
+        ]),
+        dbc.Row(children=[
+            dbc.Col(width=12, children=[model_comparison_card]),
         ]),
     ])
 
