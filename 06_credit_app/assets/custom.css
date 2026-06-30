@@ -63,3 +63,44 @@ input[type=number] { -moz-appearance: textfield; }
 
 .kpi-card { transition: box-shadow 0.2s ease; }
 .kpi-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+
+/* ── Model selector dropdown — dark theme ──────────────────────────── */
+#model-selector .Select-control {
+  background-color: #1C2940;
+  border-color: #253047;
+  color: #EEF2FF;
+}
+#model-selector .Select-control:hover {
+  border-color: #4DA6FF;
+  box-shadow: none;
+}
+#model-selector .Select-value-label,
+#model-selector .Select-single-value,
+#model-selector .Select-placeholder {
+  color: #EEF2FF !important;
+}
+#model-selector .Select-arrow-zone .Select-arrow {
+  border-top-color: #6B7A9C;
+}
+#model-selector .Select-control.is-open .Select-arrow {
+  border-bottom-color: #6B7A9C;
+}
+#model-selector .Select-menu-outer {
+  background-color: #1A2538;
+  border-color: #253047;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#model-selector .Select-option {
+  background-color: #1A2538;
+  color: #EEF2FF;
+  font-size: 13px;
+}
+#model-selector .Select-option.is-focused {
+  background-color: #253047;
+  color: #EEF2FF;
+}
+#model-selector .Select-option.is-selected {
+  background-color: #1C3050;
+  color: #4DA6FF;
+  font-weight: 600;
+}
