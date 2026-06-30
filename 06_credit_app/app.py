@@ -903,16 +903,16 @@ def _good_score(feature: str, value: float) -> float:
     return 0.5
 
 
-def _compute_contributions(feat: dict) -> list[tuple[str, float]]:
-    """Per-customer approximate feature contribution (positive → APPROVE, negative → DECLINE)."""
+def _compute_contributions(feat: dict, labels: dict = None) -> list[tuple[str, float]]:
+    lmap = labels if labels is not None else FEATURE_LABELS
     result = []
     for f in FEATURES:
         if f not in feat or f not in _feature_importances:
             continue
         good = _good_score(f, feat[f])
         contrib = (good - 0.5) * 2.0 * _feature_importances[f]
-        result.append((FEATURE_LABELS.get(f, f), round(contrib, 4)))
-    return sorted(result, key=lambda x: x[1])  # most negative first → top
+        result.append((lmap.get(f, f), round(contrib, 4)))
+    return sorted(result, key=lambda x: x[1])
 
 
 # ── Chart builders ────────────────────────────────────────────────────────────
@@ -2264,7 +2264,7 @@ def run_and_display(n_clicks, n_submit, customer_id, stats,
     ]))
 
     # ── Feature contribution card ──────────────────────────────────────────────
-    contribs = _compute_contributions(feat)
+    contribs = _compute_contributions(feat, labels=active_labels)
     contrib_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
         _section_label("Feature Contributions — this customer",
                        right=html.Span("← DECLINE  ·  APPROVE →",
@@ -2342,25 +2342,41 @@ def run_and_display(n_clicks, n_submit, customer_id, stats,
     Output("exec-portfolio-data",  "data"),
     Input("audit-interval", "n_intervals"),
     Input("_location", "pathname"),
+    State("segment-store", "data"),
 )
-def refresh_executive(_, pathname):
+def refresh_executive(_, pathname, segment):
     if pathname != "/executive":
         return [dash.no_update] * 13
 
+    seg       = segment or "banking"
     stats     = query_executive_stats()
     portfolio = query_portfolio_stats()
     queue     = query_review_queue(10)
     rows      = stats["rows"]
 
-    # ── Decisioning KPIs ──────────────────────────────────────────────────────
-    kpi_total    = _stat("Applications Processed", f"{stats['total']:,}",
-                         sub="last 200 decisions")
-    kpi_approval = _stat("Approval Rate", f"{stats['approval_rate']}%",
+    # ── Decisioning KPIs — segment-aware labels ───────────────────────────────
+    if seg == "insurance":
+        total_label    = "Applications Processed"
+        total_sub      = "last 200 underwriting decisions"
+        approval_label = "Underwriting Approval Rate"
+        approval_sub   = "issued policies · last 200"
+        kyc_label      = "Compliance Flags"
+        kyc_sub        = "escalated for review"
+    else:
+        total_label    = "Applications Processed"
+        total_sub      = "last 200 decisions"
+        approval_label = "Approval Rate"
+        approval_sub   = "auto-approved · last 200"
+        kyc_label      = "AML / KYC Flags"
+        kyc_sub        = "flagged for review"
+
+    kpi_total    = _stat(total_label, f"{stats['total']:,}", sub=total_sub)
+    kpi_approval = _stat(approval_label, f"{stats['approval_rate']}%",
                          color=_GREEN if stats["approval_rate"] >= 60 else _RED,
-                         sub="auto-approved · last 200")
-    kpi_kyc      = _stat("AML / KYC Flags", f"{stats['kyc_flag_rate']}%",
+                         sub=approval_sub)
+    kpi_kyc      = _stat(kyc_label, f"{stats['kyc_flag_rate']}%",
                          color=_RED if stats["kyc_flag_rate"] > 20 else _WARN,
-                         sub="flagged for review")
+                         sub=kyc_sub)
     avg_lat = stats["avg_latency"]
     sla_ok  = avg_lat is not None and avg_lat < 50
     kpi_lat = _stat(
@@ -2378,11 +2394,13 @@ def refresh_executive(_, pathname):
         if premium_row:
             total_customers = sum(t[1] for t in portfolio["tiers"])
             premium_pct = round(premium_row[1] / total_customers * 100) if total_customers else 0
+    portfolio_label = "Policies in Force" if seg == "insurance" else "Total Credit Portfolio"
+    portfolio_sub   = f"{premium_pct}% Preferred class" if seg == "insurance" else f"{premium_pct}% PREMIUM tier"
     kpi_portfolio = _stat(
-        "Total Credit Portfolio",
+        portfolio_label,
         f"${total_limit / 1_000_000:.1f}M" if total_limit >= 1_000_000 else f"${total_limit:,.0f}",
         color=_BLUE,
-        sub=f"{premium_pct}% PREMIUM tier",
+        sub=portfolio_sub,
     )
 
     # ── Credit tier chart ─────────────────────────────────────────────────────

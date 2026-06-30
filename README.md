@@ -50,6 +50,8 @@ One catalog, one lineage graph, one team to operate.
 
 ![Solution architecture](architecture/reference-v2.drawio.png)
 
+> The diagram shows the core Lakebase data flow (feature ingestion → real-time serving → decision logging). Both banking and insurance segments use the same three-table architecture — segment selection and model routing happen at the App layer, not at the data layer.
+
 
 ### Data Model
 

@@ -39,6 +39,16 @@ env:
   - name: N_ROWS
     value: "100000"
 
+  # Optional — provider display names shown in the UI (defaults shown below)
+  # - name: BUREAU_PROVIDER
+  #   value: "Experian"
+  # - name: CASHFLOW_PROVIDER
+  #   value: "Plaid"
+  # - name: OPEN_BANKING_PROVIDER
+  #   value: "Open Finance"
+  # - name: OPEN_INS_PROVIDER
+  #   value: "Open Insurance"
+
   # Lakebase endpoint path for credential exchange.
   # Get this from: Catalog Explorer → Lakebase → your instance → copy the endpoint path.
   # Format: projects/<project-name>/branches/<branch>/endpoints/primary
