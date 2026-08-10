@@ -21,7 +21,10 @@
 # MAGIC **Runtime:** ~3 min.
 
 # COMMAND ----------
-# MAGIC %pip install lightgbm
+# MAGIC %pip install lightgbm "databricks-sdk>=0.40.0"
+
+# COMMAND ----------
+dbutils.library.restartPython()
 
 # COMMAND ----------
 # MAGIC %md ## 0. Parameters

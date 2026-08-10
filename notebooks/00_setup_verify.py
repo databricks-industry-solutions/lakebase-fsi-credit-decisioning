@@ -32,6 +32,12 @@
 # MAGIC See `docs/AUTHENTICATION.md` for the full SP setup guide.
 
 # COMMAND ----------
+# MAGIC %pip install "databricks-sdk>=0.40.0"
+
+# COMMAND ----------
+dbutils.library.restartPython()
+
+# COMMAND ----------
 # MAGIC %md ## 0. Parameters
 
 # COMMAND ----------

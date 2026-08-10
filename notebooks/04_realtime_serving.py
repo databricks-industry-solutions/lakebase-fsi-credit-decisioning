@@ -13,7 +13,10 @@
 # MAGIC This notebook adds the full decision loop: feature + model inference + reason codes.
 
 # COMMAND ----------
-# MAGIC %pip install lightgbm
+# MAGIC %pip install lightgbm "databricks-sdk>=0.40.0"
+
+# COMMAND ----------
+dbutils.library.restartPython()
 
 # COMMAND ----------
 # MAGIC %md ## 0. Parameters
