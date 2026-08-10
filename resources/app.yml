@@ -1,0 +1,8 @@
+# Databricks App — real-time credit decisioning UI.
+# Source lives in 06_credit_app/ (app.yaml holds the runtime env config).
+resources:
+  apps:
+    credit_app:
+      name: lakebase-credit-decisioning
+      description: "Real-time credit decisioning — Lakebase feature store"
+      source_code_path: ../06_credit_app

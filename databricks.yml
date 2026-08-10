@@ -1,6 +1,9 @@
 bundle:
   name: lakebase-fsi-credit-decisioning
 
+include:
+  - resources/*.yml
+
 variables:
   catalog:
     description: "Unity Catalog name where the solution will be deployed"
@@ -17,6 +20,14 @@ variables:
   lakebase_user:
     description: "Lakebase user (Databricks email or SP client_id)"
     default: ""
+
+  n_rows:
+    description: "Synthetic dataset size (rows) generated in notebook 01"
+    default: "100000"
+
+  model_name:
+    description: "Registered champion model name (must match notebook 02)"
+    default: "credit_scoring_v1"
 
 targets:
   dev:
