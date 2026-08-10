@@ -13,12 +13,6 @@
 # MAGIC **Runtime:** ~5 min for 100K rows. Re-run with `N_ROWS=1_000_000` for performance testing.
 
 # COMMAND ----------
-# MAGIC %pip install "databricks-sdk>=0.40.0"
-
-# COMMAND ----------
-dbutils.library.restartPython()
-
-# COMMAND ----------
 # MAGIC %md ## 0. Parameters
 
 # COMMAND ----------

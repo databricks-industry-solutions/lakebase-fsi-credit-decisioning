@@ -24,12 +24,6 @@
 # MAGIC **Runtime:** ~2 min.
 
 # COMMAND ----------
-# MAGIC %pip install "databricks-sdk>=0.40.0"
-
-# COMMAND ----------
-dbutils.library.restartPython()
-
-# COMMAND ----------
 # MAGIC %md ## 0. Parameters
 
 # COMMAND ----------

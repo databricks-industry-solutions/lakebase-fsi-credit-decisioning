@@ -1,13 +1,32 @@
 # Pipeline job — runs the five solution notebooks in sequence.
 # Mirrors the manual RUNME.py / scripts/setup.sh flow, declared as a bundle resource.
+#
+# Serverless dependencies are declared in the job environment (not %pip in the
+# notebooks): serverless notebook jobs ignore mid-notebook %pip, so the SDK/lib
+# versions must come from the environment spec below. databricks-sdk>=0.40.0 is
+# required for the Lakebase credential API (w.postgres.generate_database_credential),
+# which first appears in databricks-sdk 0.80.0 (0.62 has only w.database, no w.postgres).
 resources:
   jobs:
     credit_pipeline:
       name: lakebase-credit-pipeline
       description: "End-to-end credit decisioning pipeline — lakebase-fsi-credit-decisioning SA"
 
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              - databricks-sdk>=0.80.0
+              - lightgbm
+              - xgboost
+              - scikit-learn
+              - scipy
+              - psycopg2-binary
+
       tasks:
         - task_key: 01_data_generation
+          environment_key: default
           notebook_task:
             notebook_path: ../notebooks/01_data_generation.py
             base_parameters: &pipeline_params
@@ -22,6 +41,7 @@ resources:
               target_p99_ms: "50"
 
         - task_key: 02_model_training
+          environment_key: default
           depends_on:
             - task_key: 01_data_generation
           notebook_task:
@@ -29,6 +49,7 @@ resources:
             base_parameters: *pipeline_params
 
         - task_key: 03_feature_store
+          environment_key: default
           depends_on:
             - task_key: 02_model_training
           notebook_task:
@@ -36,6 +57,7 @@ resources:
             base_parameters: *pipeline_params
 
         - task_key: 04_realtime_serving
+          environment_key: default
           depends_on:
             - task_key: 03_feature_store
           notebook_task:
@@ -43,6 +65,7 @@ resources:
             base_parameters: *pipeline_params
 
         - task_key: 05_decision_log
+          environment_key: default
           depends_on:
             - task_key: 04_realtime_serving
           notebook_task:
