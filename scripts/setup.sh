@@ -146,14 +146,34 @@ job = {
 print(json.dumps(job, indent=2))
 ")
 
-JOB_ID=$($DB jobs create --json "$JOB_JSON" 2>/dev/null \
-    | python3 -c "import sys, json; print(json.load(sys.stdin).get('job_id', ''))" \
-    || echo "")
+# Idempotent: reuse an existing job with the same name instead of creating a
+# duplicate on every run. Look it up first, reset (update) if found, else create.
+EXISTING_JOB_ID=$($DB jobs list -o json 2>/dev/null \
+    | python3 -c "import sys, json; print(next((str(j['job_id']) for j in json.load(sys.stdin) if j.get('settings', {}).get('name') == 'lakebase-credit-pipeline'), ''))" \
+    2>/dev/null || echo "")
 
-if [ -n "$JOB_ID" ]; then
-    ok "Job created — ID: $JOB_ID"
+if [ -n "$EXISTING_JOB_ID" ]; then
+    RESET_JSON=$(python3 -c "
+import json
+settings = json.loads('''$JOB_JSON''')
+print(json.dumps({'job_id': int('$EXISTING_JOB_ID'), 'new_settings': settings}))
+")
+    if $DB jobs reset --json "$RESET_JSON" >/dev/null 2>&1; then
+        JOB_ID="$EXISTING_JOB_ID"
+        ok "Job updated (reused existing) — ID: $JOB_ID"
+    else
+        JOB_ID="$EXISTING_JOB_ID"
+        warn "Job '$EXISTING_JOB_ID' exists but could not be updated — leaving as is."
+    fi
 else
-    warn "Could not create job automatically — create it manually in the UI."
+    JOB_ID=$($DB jobs create --json "$JOB_JSON" 2>/dev/null \
+        | python3 -c "import sys, json; print(json.load(sys.stdin).get('job_id', ''))" \
+        || echo "")
+    if [ -n "$JOB_ID" ]; then
+        ok "Job created — ID: $JOB_ID"
+    else
+        warn "Could not create job automatically — create it manually in the UI."
+    fi
 fi
 
 # ── Step 3: Deploy App ────────────────────────────────────────────────────────

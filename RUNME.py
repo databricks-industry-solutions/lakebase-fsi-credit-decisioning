@@ -96,21 +96,33 @@ for nb in notebooks:
     )
     tasks.append(task)
 
-job = w.jobs.create(
-    name="lakebase-credit-pipeline",
-    tasks=tasks,
-    description="Real-time credit decisioning with Lakebase — databricks-industry-solutions SA",
-)
+JOB_NAME = "lakebase-credit-pipeline"
+JOB_DESCRIPTION = "Real-time credit decisioning with Lakebase — databricks-industry-solutions SA"
+
+# Idempotent: reuse an existing job with the same name instead of creating a
+# duplicate every time this notebook runs. Reset (update) if found, else create.
+existing = next((j for j in w.jobs.list(name=JOB_NAME) if j.settings.name == JOB_NAME), None)
+
+if existing is not None:
+    job_id = existing.job_id
+    w.jobs.reset(
+        job_id=job_id,
+        new_settings=JobSettings(name=JOB_NAME, tasks=tasks, description=JOB_DESCRIPTION),
+    )
+    action = "updated (reused existing)"
+else:
+    job_id = w.jobs.create(name=JOB_NAME, tasks=tasks, description=JOB_DESCRIPTION).job_id
+    action = "created"
 
 displayHTML(f"""
-<h3>✓ Workflow created</h3>
-<p><a href='/#job/{job.job_id}' target='_blank'>
-  Open lakebase-credit-pipeline (Job ID: {job.job_id})
+<h3>✓ Workflow {action}</h3>
+<p><a href='/#job/{job_id}' target='_blank'>
+  Open {JOB_NAME} (Job ID: {job_id})
 </a></p>
 <p>Click <b>Run Now</b> to execute all notebooks in sequence (~23 min).</p>
 """)
 
-print(f"Job ID: {job.job_id}")
+print(f"Job ID: {job_id}")
 
 # COMMAND ----------
 # MAGIC %md
