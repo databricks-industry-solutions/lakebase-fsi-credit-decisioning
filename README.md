@@ -185,11 +185,22 @@ Open each notebook in the Databricks workspace UI and fill the widgets:
 
 Run notebooks 00 → 05 in order.
 
-**Option B — Automated job:**
+**Option B — Automated job (DABs):**
 
 ```bash
-databricks jobs run-now --job-id <job-id-from-setup> --profile lakebase-demo
+databricks bundle deploy --target dev \
+  --var="catalog=<your_catalog>" \
+  --var="lakebase_host=<your-lakebase-endpoint>.database.<region>.cloud.databricks.com" \
+  --var="lakebase_user=<your-email>"
+databricks bundle run credit_pipeline --target dev \
+  --var="catalog=<your_catalog>" \
+  --var="lakebase_host=<your-lakebase-endpoint>.database.<region>.cloud.databricks.com" \
+  --var="lakebase_user=<your-email>"
 ```
+
+The job runs on serverless, which ignores mid-notebook `%pip`. Its Python
+dependencies (including `databricks-sdk>=0.80.0` for the Lakebase credential API)
+come from the `environments` block in `resources/job.yml`, not from the notebooks.
 
 ### 7. Deploy the Databricks App
 
@@ -253,13 +264,24 @@ GRANT SELECT ON SCHEMA <your_catalog>.lakebase_credit_demo TO `<sp-client-id>`;
 GRANT EXECUTE ON FUNCTION <your_catalog>.lakebase_credit_demo.credit_scoring_v1 TO `<sp-client-id>`;
 ```
 
-And via psycopg2 (connect to Lakebase with admin credential):
+And via psycopg2 (connect to Lakebase with an admin/superuser credential).
+
+First create the OAuth-backed role. The `SERVICE_PRINCIPAL` argument is literal:
+
 ```sql
-SELECT databricks_create_role('<sp-client-id>', 'service_principal');
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+SELECT databricks_create_role('<sp-client-id>', 'SERVICE_PRINCIPAL');
+```
+
+Then grant it the privileges the App needs:
+
+```sql
 GRANT CONNECT ON DATABASE databricks_postgres TO "<sp-client-id>";
 GRANT USAGE ON SCHEMA public TO "<sp-client-id>";
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "<sp-client-id>";
 ```
+
+A plain `CREATE ROLE ... WITH LOGIN` fails: the App connects with an OAuth token.
 
 > **Why these grants?** The App's built-in SP must be able to load the MLflow model from UC
 > and connect to Lakebase at startup. Missing UC grants → "Model not loaded" error.
