@@ -1749,7 +1749,7 @@ app.layout = html.Div(style=_PAGE, children=[
     dcc.Store(id="result-store"),
     dcc.Store(id="session-stats", data={"total": 0, "approved": 0, "avg_ms": 0}),
     dcc.Store(id="exec-portfolio-data", data={}),
-    dcc.Store(id="segment-store", data="banking"),
+    dcc.Store(id="segment-store", data="banking", storage_type="session"),
     dcc.Store(id="model-store",   data="LightGBM"),
 ])
 
@@ -1763,7 +1763,7 @@ app.layout = html.Div(style=_PAGE, children=[
     Output("seg-insurance-btn","style"),
     Input("seg-banking-btn",   "n_clicks"),
     Input("seg-insurance-btn", "n_clicks"),
-    prevent_initial_call=False,
+    prevent_initial_call=True,
 )
 def update_segment(n_bank, n_ins):
     _btn_active   = {"background": _BLUE, "border": f"1px solid {_BLUE}",
