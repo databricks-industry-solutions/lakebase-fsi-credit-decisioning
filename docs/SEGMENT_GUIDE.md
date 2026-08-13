@@ -102,12 +102,12 @@ Walk through: approval rate trend → score distribution → decision mix drill-
 
 ### Customer Evidence
 
-| Company | What they did | Why it's relevant |
+| Segment | What they did | Why it's relevant |
 |---|---|---|
-| Bradesco | Real-time credit decisioning on Databricks, Open Finance integration — largest bancassurance in Brazil | Direct BR market reference, Open Finance + credit |
-| Digital Neobank (LATAM) | Real-time credit scoring, 70%+ risk reduction, bancassurance cross-sell at point of approval | Modern credit stack + bancassurance model |
-| Rabobank | IRB + IFRS 9 on Unity Catalog | Best public regulatory reference for IFRS 9 / capital models |
-| DBS Bank | S$1B AI value, 95% of NPLs detected 3+ months early, MAS compliance framework | Best public reference for model governance + regulatory compliance |
+| Large retail bank (BR) | Real-time credit decisioning on Databricks, Open Finance integration | BR market reference, Open Finance + credit |
+| Digital-native lender (LATAM) | Real-time credit scoring, 70%+ risk reduction, bancassurance cross-sell at point of approval | Modern credit stack + bancassurance model |
+| European agricultural bank | IRB + IFRS 9 on Unity Catalog | Regulatory reference for IFRS 9 / capital models |
+| Asia-Pacific universal bank | 95% of NPLs detected 3+ months early, model governance framework | Model governance + regulatory compliance reference |
 
 ---
 
@@ -205,11 +205,11 @@ Navigate to Risk Officer.
 
 ### Customer Evidence
 
-| Company | What they did | Why it's relevant |
+| Segment | What they did | Why it's relevant |
 |---|---|---|
-| Allianz UK Personal Lines | Migrated from SAS/Oracle to Databricks — pricing and risk teams, £80k/month savings | Best public insurer reference; directly addresses SAS migration objection |
-| BNP Paribas Cardif | 90% claims automation, 80M customers | Global bancassurance scale reference |
-| BCG market study | 2–4x conversion uplift with AI personalization in bancassurance | Market evidence for cross-sell value proposition |
+| UK personal lines insurer | Migrated from SAS/Oracle to Databricks — pricing and risk teams, significant monthly savings | Directly addresses SAS migration objection |
+| Global bancassurance (Europe) | 90% claims automation, 80M+ customers | Global bancassurance scale reference |
+| Industry study (bancassurance) | 2–4x conversion uplift with real-time personalization at point of approval | Market evidence for cross-sell value proposition |
 
 ---
 
