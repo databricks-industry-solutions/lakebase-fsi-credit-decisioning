@@ -1763,9 +1763,10 @@ app.layout = html.Div(style=_PAGE, children=[
     Output("seg-insurance-btn","style"),
     Input("seg-banking-btn",   "n_clicks"),
     Input("seg-insurance-btn", "n_clicks"),
-    prevent_initial_call=True,
+    Input("_location",         "pathname"),
+    State("segment-store",     "data"),
 )
-def update_segment(n_bank, n_ins):
+def update_segment(n_bank, n_ins, pathname, stored_seg):
     _btn_active   = {"background": _BLUE, "border": f"1px solid {_BLUE}",
                      "color": "#fff", "borderRadius": "20px",
                      "padding": "5px 18px", "fontSize": "13px",
@@ -1781,8 +1782,16 @@ def update_segment(n_bank, n_ins):
     if "seg-insurance-btn" in triggered:
         label = "Insurance — actuarial scoring, Open Insurance, underwriting workflow"
         return "insurance", label, _btn_inactive, _btn_active
+    if "seg-banking-btn" in triggered:
+        label = "Banking — bureau, cash flow, KYC, PEP screening, Open Banking"
+        return "banking", label, _btn_active, _btn_inactive
+    # Navigation or initial load — restore button state from store
+    seg = stored_seg or "banking"
+    if seg == "insurance":
+        label = "Insurance — actuarial scoring, Open Insurance, underwriting workflow"
+        return seg, label, _btn_inactive, _btn_active
     label = "Banking — bureau, cash flow, KYC, PEP screening, Open Banking"
-    return "banking", label, _btn_active, _btn_inactive
+    return seg, label, _btn_active, _btn_inactive
 
 
 @app.callback(
@@ -2237,9 +2246,6 @@ def run_and_display(n_clicks, n_submit, customer_id, stats,
             ]))
         return rows
 
-    left_groups  = active_groups[:2]
-    right_groups = active_groups[2:]
-
     def _render_groups(groups):
         out = []
         for i, (name, fields) in enumerate(groups):
@@ -2251,18 +2257,28 @@ def run_and_display(n_clicks, n_submit, customer_id, stats,
             out.extend(_5c_rows(fields))
         return out
 
-    vector_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
-        _section_label("Feature Vector — Lakebase",
-                       right=html.Span(vec_subtitle, style={"fontSize": "10px", "color": _MUTED})),
-        dbc.Row([
-            dbc.Col(width=6, children=[
-                html.Table(_render_groups(left_groups), style={"width": "100%"}),
+    if seg == "insurance":
+        # Insurance: single-column table — 3 groups × 3 rows fit without competing for width
+        vector_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+            _section_label("Feature Vector — Lakebase",
+                           right=html.Span(vec_subtitle, style={"fontSize": "10px", "color": _MUTED})),
+            html.Table(_render_groups(active_groups), style={"width": "100%"}),
+        ]))
+    else:
+        left_groups  = active_groups[:2]
+        right_groups = active_groups[2:]
+        vector_card = _card(dbc.CardBody(style={"padding": "16px"}, children=[
+            _section_label("Feature Vector — Lakebase",
+                           right=html.Span(vec_subtitle, style={"fontSize": "10px", "color": _MUTED})),
+            dbc.Row([
+                dbc.Col(width=6, children=[
+                    html.Table(_render_groups(left_groups), style={"width": "100%"}),
+                ]),
+                dbc.Col(width=6, children=[
+                    html.Table(_render_groups(right_groups), style={"width": "100%"}),
+                ]),
             ]),
-            dbc.Col(width=6, children=[
-                html.Table(_render_groups(right_groups), style={"width": "100%"}),
-            ]),
-        ]),
-    ]))
+        ]))
 
     # ── Feature contribution card ──────────────────────────────────────────────
     contribs = _compute_contributions(feat, labels=active_labels)
