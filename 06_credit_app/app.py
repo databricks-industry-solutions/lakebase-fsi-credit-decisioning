@@ -130,7 +130,7 @@ INSURANCE_FEATURE_LABELS = {
     "payment_history": "Premium Payment Reliability",
     "utilization":     "Financial Stress Index",
     "total_debt":      "Total Financial Exposure",
-    "months_employed": "Employment Stability (mo)",
+    "months_employed": "Employment Stability",
     "age":             "Age",
     "income_monthly":  "Monthly Income",
     "open_accounts":   "Open Credit Lines",
@@ -2213,7 +2213,8 @@ def run_and_display(n_clicks, n_submit, customer_id, stats,
     # ── Feature vector card — grouped by 5 Cs of Credit ──────────────────────
     td_k = {"color": _MUTED, "fontSize": "11px", "paddingRight": "12px", "paddingBottom": "5px",
              "whiteSpace": "nowrap"}
-    td_v = {"fontSize": "12px", "fontWeight": "500", "paddingBottom": "5px", "color": _TEXT}
+    td_v = {"fontSize": "12px", "fontWeight": "500", "paddingBottom": "5px", "color": _TEXT,
+             "whiteSpace": "nowrap"}
     grp_label_style = {
         "fontSize": "9px", "color": _MUTED, "textTransform": "uppercase",
         "letterSpacing": "0.9px", "fontWeight": "600",

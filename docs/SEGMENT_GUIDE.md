@@ -105,7 +105,7 @@ Walk through: approval rate trend → score distribution → decision mix drill-
 | Company | What they did | Why it's relevant |
 |---|---|---|
 | Bradesco | Real-time credit decisioning on Databricks, Open Finance integration — largest bancassurance in Brazil | Direct BR market reference, Open Finance + credit |
-| Nubank | NuScore 0–1000, nuFormer transformer, 70% risk reduction, NuSeguros bancassurance cross-sell | Modern credit stack + bancassurance model |
+| Digital Neobank (LATAM) | Real-time credit scoring, 70%+ risk reduction, bancassurance cross-sell at point of approval | Modern credit stack + bancassurance model |
 | Rabobank | IRB + IFRS 9 on Unity Catalog | Best public regulatory reference for IFRS 9 / capital models |
 | DBS Bank | S$1B AI value, 95% of NPLs detected 3+ months early, MAS compliance framework | Best public reference for model governance + regulatory compliance |
 
@@ -226,7 +226,7 @@ Three propensity scores generated on the same decision call:
 
 ### Talk track
 
-> "When this customer gets approved, Databricks immediately scores them for three bancassurance products — same feature vector, no separate batch run. The features are already in Lakebase. This is exactly how Nubank runs NuSeguros: credit approval triggers an immediate product recommendation. No overnight job, no separate pipeline."
+> "When this customer gets approved, Databricks immediately scores them for three bancassurance products — same feature vector, no separate batch run. The features are already in Lakebase. Leading digital-native lenders already run this pattern: credit approval triggers an immediate product recommendation. No overnight job, no separate pipeline."
 
 ### Life events that trigger cross-sell
 
