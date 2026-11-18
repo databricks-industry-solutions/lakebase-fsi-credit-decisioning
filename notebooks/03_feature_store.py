@@ -37,6 +37,7 @@ dbutils.widgets.text("lakebase_user",  "","User")
 dbutils.widgets.text("lakebase_pass",  "",                              "Password (token)")
 dbutils.widgets.text("uc_catalog",     "",                          "UC Catalog")
 dbutils.widgets.text("uc_schema",      "lakebase_credit_demo",          "UC Schema")
+dbutils.widgets.text("input_table", "credit_features_bronze", "UC input table in selected schema")
 
 LB_HOST = dbutils.widgets.get("lakebase_host")
 LB_PORT = int(dbutils.widgets.get("lakebase_port"))
@@ -88,7 +89,12 @@ def get_conn():
 
 # COMMAND ----------
 
-bronze = spark.table(f"{CATALOG}.{SCHEMA}.credit_features_bronze")
+import re
+input_table = dbutils.widgets.get("input_table").strip()
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", input_table):
+    raise ValueError("input_table must be an unqualified UC table name")
+print(f"Feature input: {CATALOG}.{SCHEMA}.{input_table}")
+bronze = spark.table(f"{CATALOG}.{SCHEMA}.{input_table}")
 
 silver = (
     bronze

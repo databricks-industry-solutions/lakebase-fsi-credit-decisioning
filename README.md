@@ -183,7 +183,9 @@ Open each notebook in the Databricks workspace UI and fill the widgets:
 | `lakebase_pass` | Token from Step 3 (leave empty if endpoint_path secret is set) |
 | `uc_catalog` | Your Unity Catalog name |
 
-Run notebooks 00 → 05 in order.
+Run the setup notebook `00_setup_verify.py`, then Python notebooks 01 → 05 in order.
+This manual path uses the original `credit_features_bronze` input. The SQL notebook
+`00_lakeflow_ingestion.sql` is pipeline source; run it through the bundle below.
 
 **Option B — Automated job (DABs):**
 
@@ -201,6 +203,28 @@ databricks bundle run credit_pipeline --target dev \
 The job runs on serverless, which ignores mid-notebook `%pip`. Its Python
 dependencies (including `databricks-sdk>=0.80.0` for the Lakebase credential API)
 come from the `environments` block in `resources/job.yml`, not from the notebooks.
+
+The bundle also deploys a triggered, serverless **Lakeflow Spark Declarative Pipeline**
+defined in `resources/ingestion.pipeline.yml`. After notebook 01 lands synthetic JSON
+in the UC Volume, a `pipeline_task` runs `notebooks/00_lakeflow_ingestion.sql`:
+
+```text
+UC Volume JSON → credit_ingest_bronze → credit_ingest_silver
+                                          ├─→ model training (02)
+                                          └─→ enriched features / Lakebase sync (03)
+```
+
+Bronze retains the source file path. Silver enforces eleven data-quality expectations
+with `ON VIOLATION FAIL UPDATE`, including score range, nonnegative debt, payment
+history, utilization and a valid date. A failed update blocks downstream tasks.
+Both downstream notebooks receive `input_table=credit_ingest_silver` from the job;
+their manual default remains `credit_features_bronze`.
+
+The deployment identity needs `USE CATALOG`, `USE SCHEMA`, `READ VOLUME`, and permission
+to create tables and materialized views in the selected schema. These batch
+materialized views use full refresh with expectations; this is not streaming or CDC.
+It does not add incremental synchronization of App decisions into Genie's snapshot.
+See the [pipeline SQL reference](https://docs.databricks.com/aws/en/ldp/developer/ldp-sql-ref-create-materialized-view).
 
 ### 7. Deploy the Databricks App
 

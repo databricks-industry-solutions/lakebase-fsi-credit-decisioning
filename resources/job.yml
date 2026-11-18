@@ -1,4 +1,4 @@
-# Pipeline job — runs the five solution notebooks in sequence.
+# Credit workflow — synthetic generation, declarative ingestion and downstream notebooks.
 # Mirrors the manual RUNME.py / scripts/setup.sh flow, declared as a bundle resource.
 #
 # Serverless dependencies are declared in the job environment (not %pip in the
@@ -41,11 +41,19 @@ resources:
               model_name: ${var.model_name}
               n_decisions: "10000"
               target_p99_ms: "50"
+              input_table: credit_ingest_silver
+
+        - task_key: 01b_lakeflow_ingestion
+          depends_on:
+            - task_key: 01_data_generation
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.credit_ingestion.id}
+            full_refresh: true
 
         - task_key: 02_model_training
           environment_key: default
           depends_on:
-            - task_key: 01_data_generation
+            - task_key: 01b_lakeflow_ingestion
           notebook_task:
             notebook_path: ../notebooks/02_model_training.py
             base_parameters: *pipeline_params
