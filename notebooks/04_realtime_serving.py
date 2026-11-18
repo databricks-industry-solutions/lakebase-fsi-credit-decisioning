@@ -88,7 +88,8 @@ FEATURES = [
     "derogatory_marks",
 ]
 
-CONCURRENCY_LEVELS = [1, 10, 50, 100, 500]
+# Default to 100 clients; size database connections before increasing this list.
+CONCURRENCY_LEVELS = [1, 10, 50, 100]
 WARMUP_QUERIES     = 100
 MEASURE_N          = 500
 
@@ -233,6 +234,8 @@ pool.closeall()
 
 df_results = pd.DataFrame(results)
 display(spark.createDataFrame(df_results))
+(spark.createDataFrame(df_results).write.mode("overwrite")
+ .saveAsTable(f"{CATALOG}.{SCHEMA}.benchmark_results"))
 
 # Architecture decision
 worst_p99   = df_results["p99_ms"].max()
@@ -244,7 +247,7 @@ print("=" * 60)
 print(f"  Full decision loop (feature + model + reason codes)")
 print(f"  SLA target:    p99 < {TARGET_P99}ms")
 print(f"  Worst p99:     {worst_p99:.1f}ms  (across all concurrency levels)")
-print(f"  p99 @ 100req/s: {at_100_conc:.1f}ms")
+print(f"  p99 @ 100 concurrent clients: {at_100_conc:.1f}ms")
 print(f"  VERDICT:       {verdict}")
 print("=" * 60)
 

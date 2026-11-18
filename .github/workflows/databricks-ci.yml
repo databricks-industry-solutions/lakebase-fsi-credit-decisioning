@@ -20,6 +20,9 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
 
+      - name: Run offline regression tests
+        run: python3 -m unittest discover -s _scripts/tests -v
+
       - name: Validate bundle
         if: env.DATABRICKS_HOST != ''
         env:

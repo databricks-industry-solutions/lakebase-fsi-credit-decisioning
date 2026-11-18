@@ -71,7 +71,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 
 ### Landing Page
 ![Landing page](docs/screenshots/app_landing.png)
-*Persona selector with live benchmark stats — feature lookup latency measured at 100 concurrent requests on Databricks Serverless. See benchmark results in `notebooks/04_realtime_serving.py`.*
+*Illustrative screenshot from a previous demo version. Benchmark cards now display only snapshots explicitly configured from your own measurements, or a dash when unset. See `notebooks/04_realtime_serving.py`.*
 
 ### Technical Analyst — APPROVE
 ![APPROVE decision](docs/screenshots/app_technical_approve.png)
@@ -83,7 +83,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 
 ### Risk Officer Dashboard
 ![Risk Officer dashboard](docs/screenshots/app_risk_officer.png)
-*Portfolio view: 200 applications processed, 89.0% approval rate, $1.03B total credit portfolio (27% PREMIUM tier). Credit tier distribution, top decline reasons, and approval rate trend — all reading live from Lakebase with SLA compliance (avg 5.9ms, within 50ms target).*
+*Illustrative synthetic portfolio. The operational view reads Lakebase; values vary with the generated dataset and decisions. An average latency does not establish a p99 SLA.*
 
 ## What's Included
 
@@ -92,7 +92,7 @@ authenticates and obtains Lakebase credentials. See `docs/AUTHENTICATION.md` for
 | **6 notebooks** | End-to-end pipeline: data generation → multi-model training → feature store → benchmark → audit log |
 | **Databricks App** | Two segments (Banking / Insurance), model selector dropdown (LightGBM / XGBoost / Logistic Reg), cross-sell panel, PEP / fraud velocity / Open Banking enrichment |
 | **Multi-model training** | LightGBM (champion) + XGBoost (challenger) + isotonic-calibrated Logistic Regression (challenger) with AUC, Brier Score, KS Statistic comparison |
-| **Benchmark notebook** | Automated p50/p95/p99 latency at 1–500 concurrent requests |
+| **Benchmark notebook** | Automated p50/p95/p99 latency at 1, 10, 50 and 100 concurrent clients by default |
 | **`feature_store_live` Delta table** | UC-registered snapshot of Lakebase features — queryable via SQL with full lineage |
 | **Architecture diagrams** | PNG exports (reference architecture, data model, auth flow) |
 | **Auth utilities** | Service Principal M2M OAuth helper for automated pipelines |
@@ -178,7 +178,7 @@ Open each notebook in the Databricks workspace UI and fill the widgets:
 
 | Widget | Value |
 |---|---|
-| `lakebase_host` | Host from Step 3 (e.g. `ep-xxxxx.database.us-east-1.cloud.databricks.com`) |
+| `lakebase_host` | Host from Step 3 (e.g. `<your-lakebase-endpoint>.database.<region>.cloud.databricks.com`) |
 | `lakebase_user` | Your Databricks email address |
 | `lakebase_pass` | Token from Step 3 (leave empty if endpoint_path secret is set) |
 | `uc_catalog` | Your Unity Catalog name |
@@ -302,22 +302,11 @@ A plain `CREATE ROLE ... WITH LOGIN` fails: the App connects with an OAuth token
 
 ## Benchmark Results
 
-Reference results (AWS us-east-1, Serverless Lakebase, 100K rows, full decision loop):
+Run notebook 04 to measure your environment. It writes the results to `<catalog>.<schema>.benchmark_results`, including concurrency, p50/p95/p99 and wall-clock throughput. Default concurrency is 1, 10, 50 and 100 clients. Size the database connection budget before editing `CONCURRENCY_LEVELS` for larger experiments.
 
-| Concurrency | p50 | p95 | p99 | Throughput |
-|---|---|---|---|---|
-| 1 req/s | ~4ms | ~8ms | ~12ms | — |
-| 10 req/s | ~5ms | ~10ms | ~14ms | ~200/s |
-| 50 req/s | ~6ms | ~12ms | ~18ms | ~800/s |
-| 100 req/s | ~7ms | ~14ms | ~22ms | ~1,400/s |
+The per-request timer starts after pool acquisition and covers feature retrieval, the limit lookup, LightGBM inference and decision rules. It excludes connection acquisition, audit insertion, browser/network latency and the App's mocked external services. Throughput uses elapsed wall-clock time and is not the same as client concurrency. A pass against the notebook's latency target applies only to that measured section.
 
-**SLA gate: p99 < 50ms at 100 concurrent — PASS**
-
-Full decision loop includes: Lakebase feature lookup + limit check + LightGBM inference + reason codes.
-
-> **Note:** End-to-end latency benchmark uses mock bureau and KYC APIs. Production latency will vary based on external API RTT (real bureau calls typically add 80–300ms).
-
-Run notebook 04 to measure results in your own environment.
+To display a benchmark snapshot in the App, configure `BENCHMARK_P50_MS`, `BENCHMARK_P95_MS` and `BENCHMARK_P99_MS` from your own run at 100 concurrent clients. Unset values display a dash. The cards are configured snapshots, not live monitoring or a production latency guarantee.
 
 ## Data Model
 
@@ -329,7 +318,9 @@ Three Lakebase tables, one PostgreSQL endpoint:
 | `credit_limits` | `customer_id` | Derived credit limit + tier — updated nightly |
 | `decision_log` | `(customer_id, decision_ts)` | Full audit trail — every decision with reason codes |
 
-Notebook 03 also creates a Unity Catalog Delta table, `feature_store_live`, by reading from Lakebase via Spark JDBC. This gives risk analysts governed SQL access to the live feature set with full UC lineage — without a separate connection to the PostgreSQL endpoint:
+Notebook 01 first retains synthetic JSON in a managed volume at `/Volumes/<catalog>/<schema>/raw_credit/features`, then reads those files into Bronze. The executing identity needs permission to create and use this volume. Re-running the demo overwrites its synthetic raw files and tables.
+
+Notebook 03 creates `feature_store_live` by reading Lakebase via Spark JDBC into a UC-managed Delta table. Despite its name, this is a batch snapshot refreshed by the notebook, not a live federated view:
 
 ```sql
 SELECT * FROM <catalog>.lakebase_credit_demo.feature_store_live LIMIT 10
@@ -351,6 +342,12 @@ Same customer lookup with actuarial risk score (0–100), risk class (Preferred 
 Portfolio KPIs, approval rate trend with anomaly callout, score distribution in FICO bands (300–850), clickable Decision Mix donut (drills into top reason codes per segment), live decision feed, and manual review queue.
 
 Demo scenarios are pre-loaded in the sidebar. See `docs/SEGMENT_GUIDE.md` for full talk tracks per segment.
+
+The comparison panel shows only real predictions from available models. Selecting an unavailable model returns an error instead of silently substituting another model. All labels and data are synthetic; scores are not validated default probabilities. Bureau, KYC and other external integrations are simulated, and cross-sell is heuristic. No regulatory certification is implied.
+
+The App writes operational decisions only to Lakebase. Notebook 05 writes its batch to both Lakebase and Delta; the Delta decision log does not automatically receive subsequent App decisions. UC permissions govern Delta and models; PostgreSQL grants govern operational access. Do not assume all Python/JDBC/App lineage edges are automatically recorded.
+
+For optional natural-language analysis of these snapshots, see [Genie setup](docs/GENIE.md). To run offline regression tests: `python3 -m unittest discover -s _scripts/tests -v`.
 
 ## Authentication
 

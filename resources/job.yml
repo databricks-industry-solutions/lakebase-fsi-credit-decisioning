@@ -23,6 +23,8 @@ resources:
               - scikit-learn
               - scipy
               - psycopg2-binary
+              # Serverless v3 built-in MLflow uses FieldDescriptor.label.
+              - protobuf==5.29.6
 
       tasks:
         - task_key: 01_data_generation

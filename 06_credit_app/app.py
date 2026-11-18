@@ -538,38 +538,26 @@ _system_status = {
 
 
 def _predict_score(model_name: str, X: pd.DataFrame) -> Optional[float]:
-    """Return probability score for the selected model. Falls back to LightGBM."""
+    """Return the selected model's score; unavailable models have no score."""
     if model_name == "XGBoost" and _model_xgb is not None:
         return float(_model_xgb.predict_proba(X)[0, 1])
     if model_name == "Logistic Reg" and _model_lr is not None:
         return float(_model_lr.predict_proba(X)[0, 1])
-    if _model is not None:
+    if model_name == "LightGBM" and _model is not None:
         return float(_model.predict(X)[0])
     return None
 
 
 def _all_model_scores(X: pd.DataFrame, primary_score: float, seed: int) -> dict:
-    """Scores from all three models for the comparison panel.
-    When a challenger is not loaded, derives a plausible mock score from LightGBM output
-    so the comparison panel is always populated for demo purposes.
-    """
-    rng = random.Random(seed)
+    """Return only actual model predictions; never synthesize missing results."""
     scores: dict[str, float] = {}
-    scores["LightGBM"] = round(primary_score, 4) if _model is not None else None
-    if _model_xgb is not None:
+    for name in ("LightGBM", "XGBoost", "Logistic Reg"):
         try:
-            scores["XGBoost"] = round(float(_model_xgb.predict_proba(X)[0, 1]), 4)
-        except Exception:
-            scores["XGBoost"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.04))), 4)
-    else:
-        scores["XGBoost"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.04))), 4)
-    if _model_lr is not None:
-        try:
-            scores["Logistic Reg"] = round(float(_model_lr.predict_proba(X)[0, 1]), 4)
-        except Exception:
-            scores["Logistic Reg"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.06))), 4)
-    else:
-        scores["Logistic Reg"] = round(max(0.01, min(0.99, primary_score + rng.gauss(0, 0.06))), 4)
+            value = _predict_score(name, X)
+            if value is not None:
+                scores[name] = round(value, 4)
+        except Exception as exc:
+            print(f"WARN comparison {name}: {exc.__class__.__name__}")
     return scores
 
 
@@ -729,7 +717,6 @@ def run_decision(customer_id: int, model_name: str = "LightGBM",
         row = cur.fetchone()
         if row is None:
             cur.close()
-            pool.putconn(conn)
             return {"error": f"Customer {customer_id} not found (range: 0–{N_ROWS-1})"}
         cur.execute(
             "SELECT credit_limit, available, tier FROM credit_limits WHERE customer_id = %s",
@@ -779,7 +766,7 @@ def run_decision(customer_id: int, model_name: str = "LightGBM",
     if _model is None:
         _load_model_if_needed()
     if _model is None:
-        return {"error": "Model not loaded — check UC registry"}
+        return {"error": "Selected model unavailable — check UC registry and permissions"}
 
     X     = pd.DataFrame([{f: feat[f] for f in FEATURES}])
     score = _predict_score(model_name, X)
@@ -1401,21 +1388,21 @@ _LANDING = html.Div(id="page-landing", children=[
                         html.Div(style={"display": "flex", "gap": "40px", "alignItems": "center"}, children=[
                             html.Div([
                                 html.Div("p50", style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
-                                html.Div("4 ms", style={"fontSize": "22px", "fontWeight": "700",
+                                html.Div(os.environ.get("BENCHMARK_P50_MS", "—"), style={"fontSize": "22px", "fontWeight": "700",
                                                          "color": _GREEN}),
                             ]),
                             html.Div(style={"width": "1px", "height": "32px",
                                             "backgroundColor": _BORDER}),
                             html.Div([
                                 html.Div("p95", style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
-                                html.Div("14 ms", style={"fontSize": "22px", "fontWeight": "700",
+                                html.Div(os.environ.get("BENCHMARK_P95_MS", "—"), style={"fontSize": "22px", "fontWeight": "700",
                                                           "color": _GREEN}),
                             ]),
                             html.Div(style={"width": "1px", "height": "32px",
                                             "backgroundColor": _BORDER}),
                             html.Div([
                                 html.Div("p99", style={"fontSize": "10px", "color": _MUTED, **_UPPER}),
-                                html.Div("22 ms", style={"fontSize": "22px", "fontWeight": "700",
+                                html.Div(os.environ.get("BENCHMARK_P99_MS", "—"), style={"fontSize": "22px", "fontWeight": "700",
                                                           "color": _GREEN}),
                             ]),
                             html.Div(style={"width": "1px", "height": "32px",
@@ -1440,7 +1427,7 @@ _LANDING = html.Div(id="page-landing", children=[
                     }),
                 ]),
             ]),
-            html.Div("@ 100 concurrent · us-east-1 · Databricks Serverless", style={
+            html.Div("Configured benchmark snapshot · 100 concurrent · excludes mock services and audit", style={
                 "fontSize": "11px", "color": _MUTED, "marginTop": "6px",
             }),
 
@@ -1742,6 +1729,12 @@ _EXEC = html.Div(id="page-executive", style={"display": "none"}, children=[
 app.layout = html.Div(style=_PAGE, children=[
     dcc.Location(id="_location", refresh=False),
     _header(),
+    html.Div(style={"padding": "8px 24px", "fontSize": "12px", "color": _MUTED}, children=[
+        html.Span("Synthetic demo data · External services and KYC are simulated · Scores are not validated default probabilities. "),
+        html.A("Ask Genie about the portfolio →", href=os.environ.get("GENIE_SPACE_URL", ""),
+               target="_blank", rel="noopener noreferrer", style={"color": _BLUE})
+        if os.environ.get("GENIE_SPACE_URL") else None,
+    ]),
     _LANDING,
     _TECH,
     _EXEC,
