@@ -55,6 +55,19 @@ env:
   - name: LAKEBASE_ENDPOINT_PATH
     value: "<your-lakebase-endpoint-path>"
 
+  # Optional: show a measured snapshot from your own notebook 04 run.
+  # Leave unset to display a dash; these values are not live telemetry.
+  # - name: BENCHMARK_P50_MS
+  #   value: "<measured-p50-with-unit>"
+  # - name: BENCHMARK_P95_MS
+  #   value: "<measured-p95-with-unit>"
+  # - name: BENCHMARK_P99_MS
+  #   value: "<measured-p99-with-unit>"
+
+  # Optional: open your own Genie Space. See docs/GENIE.md.
+  # - name: GENIE_SPACE_URL
+  #   value: "<your-genie-space-url>"
+
 # ── Auth note ──────────────────────────────────────────────────────────────────
 # The App authenticates to Lakebase using two built-in mechanisms — no Secrets block needed:
 #

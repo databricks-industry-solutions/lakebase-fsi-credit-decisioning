@@ -2,6 +2,8 @@
 
 Talk tracks and flow for both segments. Full explanations of every metric and score are in `docs/GLOSSARY.md`. Segment-specific storytelling is in `docs/SEGMENT_GUIDE.md`.
 
+All data and labels are synthetic. External integrations, including bureau and KYC, are mocks. Scores and illustrative governance labels do not establish default-risk validity or regulatory compliance. Read the current run output rather than repeating historical screenshot numbers.
+
 ## Pre-demo checklist
 
 - Open the app and run customer **62850** first — this warms the model cache
@@ -24,7 +26,7 @@ Select **Banking** on the landing page. Two personas appear: Credit Analyst and 
 
 Click **Technical Analyst**. Enter `62850`.
 
-> "Feature lookup from Lakebase in about 4ms. Bureau and cash flow via external APIs at 80-300ms. KYC gate, PEP screening, Open Banking income verification — all before the model runs."
+> "Features and limits are read from Lakebase. Bureau, cash flow, KYC, PEP and Open Banking are simulated in this demo. Use your own measurements to discuss latency."
 
 **What to point out:**
 
@@ -45,7 +47,7 @@ Switch model to **XGBoost** and re-run.
 
 Switch to **Logistic Reg (calibrated)**.
 
-> "The logistic regression uses isotonic calibration. When the risk officer asks whether a predicted 5% PD means 5% actual default rate — isotonic calibration is the answer. IFRS 9 provisioning requires it."
+> "The logistic regression uses isotonic calibration against synthetic labels. This does not validate real default probabilities or satisfy a provisioning standard; real outcomes and independent validation are needed."
 
 ---
 
@@ -80,9 +82,9 @@ Click **← Home** → **Risk Officer**.
 
 Open `architecture/reference-v2.drawio.png` fullscreen.
 
-> "One PostgreSQL endpoint, three Lakebase tables: credit_features for real-time lookup, credit_limits for the limit check, decision_log written at decision time to both Delta and Lakebase. Unity Catalog lineage covers raw data through features, model, and decision — one URL for the regulator."
+> "One PostgreSQL endpoint, three Lakebase tables: credit_features for real-time lookup, credit_limits for the limit check, the App writes operational decisions to Lakebase. Notebook 05 writes its batch to both Delta and Lakebase. The Delta snapshot does not automatically receive later App decisions, and cross-system lineage must be verified."
 
-**Benchmark:** p99 under 22ms at 100 concurrent requests vs. 50ms SLA target.
+**Benchmark:** show the actual notebook 04 output and its measured scope. The timer excludes pool acquisition, audit insertion and simulated integrations; concurrency is not throughput.
 
 ---
 
@@ -99,7 +101,7 @@ Select **Insurance** on the landing page. Personas update to Underwriting Analys
 
 Click **Underwriting Analyst**. Enter `62850`.
 
-> "Lakebase feature lookup in 4ms. Actuarial score computed from age, derogatory marks, payment reliability. Open Insurance pull: cross-insurer claims in the last 3 years, policy count, loss ratio."
+> "Lakebase feature lookup measured in your own run. Actuarial score computed from age, derogatory marks, payment reliability. Open Insurance pull: cross-insurer claims in the last 3 years, policy count, loss ratio."
 
 **What to point out:**
 
@@ -115,7 +117,7 @@ Click **Underwriting Analyst**. Enter `62850`.
 
 Switch model to **Logistic Reg (calibrated)**.
 
-> "For insurance pricing, calibration is not optional. A model that ranks risks correctly but predicts 5% loss ratio when actual is 12% will mis-price the book. CNSP 321 and Solvency II actuarial technical note requirements explicitly address this. Isotonic calibration aligns predicted probabilities to observed rates."
+> "For insurance pricing, calibration is not optional. A model that ranks risks correctly but predicts 5% loss ratio when actual is 12% will mis-price the book. CNSP 321 and Solvency II actuarial technical note requirements explicitly address this. Isotonic calibration here fits synthetic outcomes; production loss calibration and compliance need separate validation."
 
 ---
 

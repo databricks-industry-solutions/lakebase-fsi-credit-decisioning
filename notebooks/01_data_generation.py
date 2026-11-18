@@ -172,6 +172,15 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 
 df = spark.createDataFrame(rows, schema=SCHEMA_STRUCT)
 
+# Retain the raw ingestion boundary for reproducible batch processing.
+# Synthetic source files are retained in a managed UC volume before Bronze.
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_credit")
+raw_path = f"/Volumes/{CATALOG}/{SCHEMA}/raw_credit/features"
+df.write.mode("overwrite").json(raw_path)
+df = spark.read.schema(SCHEMA_STRUCT).json(raw_path)
+assert df.count() == N_ROWS, "Raw ingestion row count mismatch"
+print(f"Raw JSON ingestion: {raw_path} -> Bronze ({N_ROWS:,} rows)")
+
 (
     df.write
     .format("delta")
