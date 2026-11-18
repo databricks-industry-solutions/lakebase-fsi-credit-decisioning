@@ -1,0 +1,15 @@
+resources:
+  pipelines:
+    credit_ingestion:
+      name: lakebase-credit-ingestion
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      edition: ADVANCED
+      configuration:
+        credit.raw_path: /Volumes/${var.catalog}/${var.schema}/raw_credit/features
+      libraries:
+        - notebook:
+            path: ../notebooks/00_lakeflow_ingestion.sql

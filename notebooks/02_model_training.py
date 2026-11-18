@@ -23,11 +23,16 @@
 dbutils.widgets.text("uc_catalog",  "", "UC Catalog")
 dbutils.widgets.text("uc_schema",   "lakebase_credit_demo",  "UC Schema")
 dbutils.widgets.text("model_name",  "credit_scoring_v1",     "Registered model name")
+dbutils.widgets.text("input_table", "credit_features_bronze", "UC input table in selected schema")
 
 CATALOG    = dbutils.widgets.get("uc_catalog").strip()
 SCHEMA     = dbutils.widgets.get("uc_schema").strip()
 MODEL_NAME = dbutils.widgets.get("model_name").strip()
-TABLE_NAME = f"{CATALOG}.{SCHEMA}.credit_features_bronze"
+INPUT_TABLE = dbutils.widgets.get("input_table").strip()
+import re
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", INPUT_TABLE):
+    raise ValueError("input_table must be an unqualified UC table name")
+TABLE_NAME = f"{CATALOG}.{SCHEMA}.{INPUT_TABLE}"
 
 if not CATALOG:
     raise ValueError("Fill the 'uc_catalog' widget.")
